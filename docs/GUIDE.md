@@ -9,21 +9,30 @@
 
 ## 部署流程
 
-### 1. 创建项目
+### 1. 部署方式
 
-在 [Deno Deploy](https://dash.deno.com/) 点击 "New Project" → "Deploy from
-Dashboard"
+**方式 A：Playground 部署（推荐）**
 
-### 2. 粘贴源码
+1. 在 [Deno Deploy](https://dash.deno.com/) 点击 "New Playground"
+2. 打开打包好的单文件
+   [`dist/deno.bundle.min.js`](https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.min.js)
+3. 全选复制并粘贴到 Playground，保存并 Deploy
 
-将 `deno.ts` 整体拷贝到在线编辑器，保存并 Deploy
+**方式 B：GitHub 绑定部署（开发者）**
 
-### 3. （可选）调整 KV 刷盘间隔
+点击下方按钮一键 Fork 并部署：
+
+[![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
+
+> **注意**：`deno.ts` 依赖 `src/` 下的多个模块，不能直接粘贴到 Playground。
+> 必须使用打包版本或 GitHub 绑定部署。
+
+### 2. （可选）调整 KV 刷盘间隔
 
 默认每 15 秒刷盘一次（最小
 1000ms）。部署后登录管理面板，在「访问控制」→「高级设置」里调整。
 
-### 4. 验证部署
+### 3. 验证部署
 
 访问日志，应看到：
 
@@ -35,7 +44,7 @@ Cerebras Proxy 启动
 - 存储: Deno KV
 ```
 
-### 5. 首次配置
+### 4. 首次配置
 
 1. 浏览器打开 `https://<project>.deno.dev/`
 2. 设置管理密码（至少 4 位）

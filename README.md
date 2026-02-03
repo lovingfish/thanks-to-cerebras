@@ -68,13 +68,13 @@
    - 点击 [Cerebras官网](https://www.cerebras.ai/) 找右上角。
 
 2. 部署到 Deno:
-   - 打开 [Deno Deploy](https://dash.deno.com/) 并新建 `Playground`。
-   - **傻瓜版（推荐）**：打开下面任意一个文件，全选复制后粘贴到 Playground
-     并部署：
-     - `dist/deno.bundle.min.js`（推荐，体积更小）：https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.min.js
-     - `dist/deno.bundle.js`（可读版本）：https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.js
-   - **开发者版**：直接把 `deno.ts` 的代码粘贴进去并部署（或使用 GitHub
-     绑定部署）。
+   - **傻瓜版（推荐）**：打开 [Deno Deploy](https://dash.deno.com/) 并新建
+     `Playground`，打开下面任意一个文件，全选复制后粘贴到 Playground 并部署：
+     - [`dist/deno.bundle.min.js`](https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.min.js)（推荐，体积更小）
+     - [`dist/deno.bundle.js`](https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.js)（可读版本）
+   - **开发者版**：点击下方按钮一键 Fork 并部署到 Deno Deploy：
+
+     [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
    - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
      1000ms）。
    <div align="center">
