@@ -68,19 +68,15 @@
    - 点击 [Cerebras官网](https://www.cerebras.ai/) 找右上角。
 
 2. 部署到 Deno:
-   - **傻瓜版（推荐）**：打开 [Deno Deploy](https://dash.deno.com/) 并新建
-     `Playground`，打开下面任意一个文件，全选复制后粘贴到 Playground 并部署：
-     - [`dist/deno.bundle.min.js`](https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.min.js)（推荐，体积更小）
-     - [`dist/deno.bundle.js`](https://github.com/zhu-jl18/thanks-to-cerebras/blob/bundle/dist/deno.bundle.js)（可读版本）
-   - **开发者版**：点击下方按钮一键 Fork 并部署到 Deno Deploy：
+   - **推荐（Fork + Git 部署）**：点击下方按钮一键 Fork 并部署到新 Deno Deploy（`console.deno.com`），入口文件选择 `deno.ts`：
 
      [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
+
+     > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
+
+   - 其他部署方式（Playgrounds + bundle / Deploy Classic）见 [部署指南](docs/GUIDE.md)。
    - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
      1000ms）。
-   <div align="center">
-      <p>Deno Deploy 配置</p>
-      <img src="image/配置说明1.png" alt="Deno Deploy" width="70%">
-    </div>
 
 3. 首次配置:
    - 访问 `https://<项目名>.deno.dev/`
@@ -133,10 +129,13 @@ sequenceDiagram
 ### 本地运行
 
 ```bash
-deno run --allow-net --allow-env --allow-read --allow-write --unstable-kv deno.ts
+deno run --allow-net --allow-env --allow-read --allow-write deno.ts
 ```
 
 KV 数据存储在 `.deno-kv-local/kv.sqlite3`。
+
+> 如果你看到 `TypeError: Deno.openKv is not a function`：说明运行环境没有启用 KV
+> 的不稳定特性。此仓库已在 `deno.json` 里声明 `"unstable": ["kv"]`；请确保你的部署方式会加载该配置（推荐直接从 Git 部署到 Deno Deploy）。
 
 ### API 接口
 

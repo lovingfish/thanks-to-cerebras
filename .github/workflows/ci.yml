@@ -18,11 +18,11 @@ jobs:
         with:
           deno-version: v2.x
       - name: deno fmt --check
-        run: deno fmt --check deno.ts deno_test.ts src/*.ts
+        run: deno fmt --check deno.ts deno_test.ts src
       - name: deno lint
-        run: deno lint deno.ts deno_test.ts src/*.ts
+        run: deno lint deno.ts deno_test.ts src
       - name: deno check
-        run: deno check deno.ts deno_test.ts src/*.ts
+        run: deno check deno.ts deno_test.ts src
       - name: deno test
         run: deno test deno_test.ts
   publish_bundle:
@@ -65,9 +65,18 @@ jobs:
           Files:
           - dist/deno.bundle.js (readable)
           - dist/deno.bundle.min.js (minified, recommended)
+
+          Notes:
+          - This project uses Deno KV. If you see `Deno.openKv is not a function`, enable KV unstable:
+            - Add a `deno.json` with `{ "unstable": ["kv"] }`, or
+            - Enable `--unstable-kv` / KV in your Deno Deploy build config.
           EOF
 
-          git add dist README.md
+          cat > deno.json <<'EOF'
+          { "unstable": ["kv"] }
+          EOF
+
+          git add dist README.md deno.json
 
           if git diff --cached --quiet; then
             echo "No changes to publish"

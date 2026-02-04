@@ -12,11 +12,12 @@ import {
   parseBatchInput,
   safeJsonParse,
 } from "../utils.ts";
-import { cachedKeysById, cachedModelPool } from "../state.ts";
+import { cachedModelPool } from "../state.ts";
 import {
   kvAddKey,
   kvDeleteKey,
   kvGetAllKeys,
+  kvGetApiKeyById,
   kvUpdateKey,
   removeModelFromPool,
 } from "../kv.ts";
@@ -25,7 +26,7 @@ import { isModelNotFoundPayload, isModelNotFoundText } from "../models.ts";
 export async function testKey(
   id: string,
 ): Promise<{ success: boolean; status: string; error?: string }> {
-  const apiKey = cachedKeysById.get(id);
+  const apiKey = await kvGetApiKeyById(id);
 
   if (!apiKey) {
     return { success: false, status: "invalid", error: "密钥不存在" };
@@ -100,6 +101,7 @@ export async function handleApiKeyRoutes(
 ): Promise<Response | null> {
   if (req.method === "GET" && path === "/api/keys") {
     const keys = await kvGetAllKeys();
+    keys.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const maskedKeys = keys.map((k) => ({
       ...k,
       key: maskKey(k.key),
@@ -188,7 +190,8 @@ export async function handleApiKeyRoutes(
   }
 
   if (req.method === "GET" && path === "/api/keys/export") {
-    const keys = Array.from(cachedKeysById.values());
+    const keys = await kvGetAllKeys();
+    keys.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const rawKeys = keys.map((k) => k.key);
     return jsonResponse({ keys: rawKeys });
   }
@@ -199,7 +202,7 @@ export async function handleApiKeyRoutes(
     path.endsWith("/export")
   ) {
     const id = path.split("/")[3];
-    const keyEntry = cachedKeysById.get(id);
+    const keyEntry = await kvGetApiKeyById(id);
     if (!keyEntry) {
       return problemResponse("密钥不存在", { status: 404, instance: path });
     }

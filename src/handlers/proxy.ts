@@ -25,7 +25,7 @@ import {
   isModelNotFoundPayload,
   isModelNotFoundText,
 } from "../models.ts";
-import { removeModelFromPool } from "../kv.ts";
+import { kvMergeAllApiKeysIntoCache, removeModelFromPool } from "../kv.ts";
 
 export function handleModelsEndpoint(_req: Request): Response {
   const now = Math.floor(Date.now() / 1000);
@@ -43,7 +43,7 @@ export function handleModelsEndpoint(_req: Request): Response {
 }
 
 export async function handleProxyEndpoint(req: Request): Promise<Response> {
-  const authResult = isProxyAuthorized(req);
+  const authResult = await isProxyAuthorized(req);
   if (!authResult.authorized) {
     return jsonError("Unauthorized", 401);
   }
@@ -55,7 +55,11 @@ export async function handleProxyEndpoint(req: Request): Promise<Response> {
   try {
     const requestBody = await req.json();
 
-    const apiKeyData = getNextApiKeyFast(Date.now());
+    let apiKeyData = getNextApiKeyFast(Date.now());
+    if (!apiKeyData) {
+      await kvMergeAllApiKeysIntoCache();
+      apiKeyData = getNextApiKeyFast(Date.now());
+    }
     if (!apiKeyData) {
       const now = Date.now();
       const cooldowns = cachedActiveKeyIds

@@ -1,5 +1,4 @@
 // deno.ts - Cerebras API 代理与密钥管理系统
-import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
 import { CORS_HEADERS } from "./src/constants.ts";
 import { problemResponse } from "./src/http.ts";
@@ -90,5 +89,5 @@ console.log(`- 存储: Deno KV`);
 if (import.meta.main) {
   await bootstrapCache();
   applyKvFlushInterval(cachedConfig);
-  serve(handler);
+  Deno.serve(handler);
 }

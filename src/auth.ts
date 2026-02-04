@@ -4,7 +4,13 @@ import {
   ADMIN_TOKEN_PREFIX,
 } from "./constants.ts";
 import { hashPassword, verifyPbkdf2Password } from "./crypto.ts";
-import { cachedProxyKeys, dirtyProxyKeyIds, kv } from "./state.ts";
+import {
+  cachedProxyKeys,
+  dirtyProxyKeyIds,
+  kv,
+  setCachedProxyKeys,
+} from "./state.ts";
+import { kvGetAllProxyKeys } from "./kv.ts";
 
 // Admin password management
 export async function getAdminPassword(): Promise<string | null> {
@@ -52,11 +58,15 @@ export async function isAdminAuthorized(req: Request): Promise<boolean> {
 }
 
 // Proxy authorization
-export function isProxyAuthorized(
+export async function isProxyAuthorized(
   req: Request,
-): { authorized: boolean; keyId?: string } {
+): Promise<{ authorized: boolean; keyId?: string }> {
   if (cachedProxyKeys.size === 0) {
-    return { authorized: true };
+    const keys = await kvGetAllProxyKeys();
+    if (keys.length === 0) {
+      return { authorized: true };
+    }
+    setCachedProxyKeys(new Map(keys.map((k) => [k.id, k])));
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -65,6 +75,14 @@ export function isProxyAuthorized(
   }
 
   const token = authHeader.substring(7).trim();
+  for (const [id, pk] of cachedProxyKeys) {
+    if (pk.key === token) {
+      return { authorized: true, keyId: id };
+    }
+  }
+
+  const keys = await kvGetAllProxyKeys();
+  setCachedProxyKeys(new Map(keys.map((k) => [k.id, k])));
   for (const [id, pk] of cachedProxyKeys) {
     if (pk.key === token) {
       return { authorized: true, keyId: id };

@@ -1,15 +1,20 @@
 import { MAX_PROXY_KEYS } from "../constants.ts";
 import { jsonResponse, problemResponse } from "../http.ts";
 import { getErrorMessage, maskKey } from "../utils.ts";
-import { cachedProxyKeys } from "../state.ts";
-import { kvAddProxyKey, kvDeleteProxyKey } from "../kv.ts";
+import {
+  kvAddProxyKey,
+  kvDeleteProxyKey,
+  kvGetAllProxyKeys,
+  kvGetProxyKeyById,
+} from "../kv.ts";
 
 export async function handleProxyKeyRoutes(
   req: Request,
   path: string,
 ): Promise<Response | null> {
   if (req.method === "GET" && path === "/api/proxy-keys") {
-    const keys = Array.from(cachedProxyKeys.values());
+    const keys = await kvGetAllProxyKeys();
+    keys.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const masked = keys.map((k) => ({
       id: k.id,
       key: maskKey(k.key),
@@ -21,7 +26,7 @@ export async function handleProxyKeyRoutes(
     return jsonResponse({
       keys: masked,
       maxKeys: MAX_PROXY_KEYS,
-      authEnabled: cachedProxyKeys.size > 0,
+      authEnabled: keys.length > 0,
     });
   }
 
@@ -62,7 +67,7 @@ export async function handleProxyKeyRoutes(
     path.endsWith("/export")
   ) {
     const id = path.split("/")[3];
-    const pk = cachedProxyKeys.get(id);
+    const pk = await kvGetProxyKeyById(id);
     if (!pk) {
       return problemResponse("密钥不存在", { status: 404, instance: path });
     }

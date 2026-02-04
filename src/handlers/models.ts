@@ -13,6 +13,7 @@ import {
 import { cachedKeysById, cachedModelCatalog } from "../state.ts";
 import {
   isModelCatalogFresh,
+  kvGetAllKeys,
   kvGetConfig,
   kvGetModelCatalog,
   kvUpdateConfig,
@@ -180,9 +181,13 @@ export async function handleModelRoutes(
       });
     }
 
-    const activeKey = Array.from(cachedKeysById.values()).find(
+    let activeKey = Array.from(cachedKeysById.values()).find(
       (k) => k.status === "active",
     );
+    if (!activeKey) {
+      const keys = await kvGetAllKeys();
+      activeKey = keys.find((k) => k.status === "active");
+    }
     if (!activeKey) {
       return problemResponse("没有可用的 API 密钥", {
         status: 400,

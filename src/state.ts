@@ -8,7 +8,26 @@ import { DEFAULT_KV_FLUSH_INTERVAL_MS } from "./constants.ts";
 
 // Deno KV instance
 export const isDenoDeployment = Boolean(Deno.env.get("DENO_DEPLOYMENT_ID"));
+
+function assertKvSupported(): void {
+  const openKv = (Deno as unknown as { openKv?: unknown }).openKv;
+  if (typeof openKv === "function") return;
+
+  const message = [
+    "[KV] Deno.openKv 不可用：需要启用 Deno KV（unstable）。",
+    "",
+    "可选修复：",
+    '- 本地运行：使用 `--unstable-kv`，或在 `deno.json` 里添加 `"unstable": ["kv"]`',
+    '- Deno Deploy：在 Playgrounds 里新增 `deno.json` 文件并写入 `{ "unstable": ["kv"] }`，或在 Build Config 启用 KV/unstable',
+    "",
+    "当前运行时给的报错：`Deno.openKv is not a function`",
+  ].join("\n");
+
+  throw new Error(message);
+}
+
 export const kv = await (() => {
+  assertKvSupported();
   if (isDenoDeployment) return Deno.openKv();
   const kvDir = `${import.meta.dirname}/.deno-kv-local`;
   try {
@@ -104,4 +123,14 @@ export function setKvFlushTimerId(id: number | null): void {
 export let kvFlushIntervalMsEffective = DEFAULT_KV_FLUSH_INTERVAL_MS;
 export function setKvFlushIntervalMsEffective(ms: number): void {
   kvFlushIntervalMsEffective = ms;
+}
+
+export let pendingTotalRequests = 0;
+export function addPendingTotalRequests(delta: number): void {
+  if (!Number.isFinite(delta) || delta <= 0) return;
+  pendingTotalRequests += Math.trunc(delta);
+}
+export function subtractPendingTotalRequests(delta: number): void {
+  if (!Number.isFinite(delta) || delta <= 0) return;
+  pendingTotalRequests = Math.max(0, pendingTotalRequests - Math.trunc(delta));
 }

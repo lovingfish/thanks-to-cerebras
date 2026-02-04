@@ -3,7 +3,6 @@ import {
   cachedModelPool,
   modelCursor,
   setCachedModelPool,
-  setDirtyConfig,
   setModelCursor,
 } from "./state.ts";
 
@@ -67,11 +66,6 @@ export function getNextModelFast(): string | null {
   const idx = modelCursor % cachedModelPool.length;
   const model = cachedModelPool[idx];
   setModelCursor((idx + 1) % cachedModelPool.length);
-
-  if (cachedConfig) {
-    cachedConfig.currentModelIndex = modelCursor;
-    setDirtyConfig(true);
-  }
 
   return model;
 }

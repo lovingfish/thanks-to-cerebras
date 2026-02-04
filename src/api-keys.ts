@@ -1,4 +1,5 @@
 import {
+  addPendingTotalRequests,
   cachedActiveKeyIds,
   cachedConfig,
   cachedCursor,
@@ -46,7 +47,7 @@ export function getNextApiKeyFast(
     dirtyKeyIds.add(id);
 
     if (cachedConfig) {
-      cachedConfig.totalRequests += 1;
+      addPendingTotalRequests(1);
       setDirtyConfig(true);
     }
 

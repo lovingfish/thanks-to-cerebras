@@ -352,6 +352,8 @@ export async function renderAdminPage(): Promise<Response> {
 
     let currentModelPool = [];
     let modelCatalogState = null;
+    let modelPoolDraft = new Set();
+    let modelPoolDraftDirty = false;
 
     // 主题管理
     function loadTheme() {
@@ -1126,7 +1128,7 @@ export async function renderAdminPage(): Promise<Response> {
       if (!container || !hint) return;
 
       const pool = Array.isArray(currentModelPool) ? currentModelPool.map(m => String(m)) : [];
-      const poolSet = new Set(pool);
+      const poolSet = modelPoolDraftDirty ? modelPoolDraft : new Set(pool);
 
       const catalogModels = (modelCatalogState && Array.isArray(modelCatalogState.models))
         ? modelCatalogState.models.map(m => String(m))
@@ -1163,6 +1165,11 @@ export async function renderAdminPage(): Promise<Response> {
         checkbox.dataset.model = name;
         checkbox.checked = poolSet.has(name);
         checkbox.style.marginRight = '8px';
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) modelPoolDraft.add(name);
+          else modelPoolDraft.delete(name);
+          modelPoolDraftDirty = true;
+        });
 
         const modelSpan = document.createElement('span');
         modelSpan.className = 'key-text';
@@ -1184,12 +1191,10 @@ export async function renderAdminPage(): Promise<Response> {
         const actions = document.createElement('div');
         actions.className = 'item-actions';
 
-        const encodedName = encodeURIComponent(name);
-
         const testBtn = document.createElement('button');
         testBtn.className = 'btn btn-success';
         testBtn.textContent = '测试';
-        testBtn.addEventListener('click', () => testModel(encodedName, testBtn));
+        testBtn.addEventListener('click', () => testModel(name, testBtn));
 
         actions.appendChild(testBtn);
         item.appendChild(actions);
@@ -1300,6 +1305,8 @@ export async function renderAdminPage(): Promise<Response> {
         }
 
         showNotification('模型池已保存');
+        modelPoolDraftDirty = false;
+        modelPoolDraft = new Set(models);
         loadModels();
       } catch (e) {
         showNotification('保存失败: ' + formatClientError(e), 'error');
@@ -1319,6 +1326,9 @@ export async function renderAdminPage(): Promise<Response> {
         }
 
         currentModelPool = Array.isArray(data.models) ? data.models.map(m => String(m)) : [];
+        if (!modelPoolDraftDirty) {
+          modelPoolDraft = new Set(currentModelPool);
+        }
         renderModelCatalog();
       } catch (e) {
         showNotification('加载失败: ' + formatClientError(e), 'error');
@@ -1328,7 +1338,8 @@ export async function renderAdminPage(): Promise<Response> {
     async function testModel(name, btn) {
       setButtonLoading(btn, true, '在测');
       try {
-        const { res, data } = await fetchJsonWithTimeout('/api/models/' + name + '/test', { method: 'POST', headers: getAuthHeaders() }, 15000);
+        const encodedName = encodeURIComponent(String(name || ''));
+        const { res, data } = await fetchJsonWithTimeout('/api/models/' + encodedName + '/test', { method: 'POST', headers: getAuthHeaders() }, 15000);
         if (handleUnauthorized(res)) return;
         if (!res.ok) {
           showNotification('模型测试失败: ' + getApiErrorMessage(res, data), 'error');
@@ -1337,6 +1348,11 @@ export async function renderAdminPage(): Promise<Response> {
         const ok = Boolean(data.success);
         const detail = data.error || data.status || (res.ok ? '' : ('HTTP ' + res.status));
         showNotification(ok ? '模型可用' : ('模型不可用: ' + detail), ok ? 'success' : 'error');
+        if (!ok && data.status === 'model_not_found') {
+          modelPoolDraft.delete(String(name));
+          modelPoolDraftDirty = true;
+        }
+        loadModels();
       } catch (e) {
         showNotification('模型测试失败: ' + formatClientError(e), 'error');
       } finally {
