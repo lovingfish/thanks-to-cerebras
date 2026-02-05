@@ -1,10 +1,13 @@
 import { MAX_PROXY_KEYS, NO_CACHE_HEADERS } from "../constants.ts";
-import { cachedProxyKeys } from "../state.ts";
-import { kvGetAllKeys, kvGetConfig } from "../kv.ts";
+import { kvGetAllKeys, kvGetAllProxyKeys, kvGetConfig } from "../kv.ts";
 
 export async function renderAdminPage(): Promise<Response> {
-  const [keys, config] = await Promise.all([kvGetAllKeys(), kvGetConfig()]);
-  const proxyKeyCount = cachedProxyKeys.size;
+  const [keys, config, proxyKeys] = await Promise.all([
+    kvGetAllKeys(),
+    kvGetConfig(),
+    kvGetAllProxyKeys(),
+  ]);
+  const proxyKeyCount = proxyKeys.length;
   const stats = {
     totalKeys: keys.length,
     activeKeys: keys.filter((k) => k.status === "active").length,

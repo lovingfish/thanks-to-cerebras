@@ -1,5 +1,7 @@
 # API 文档
 
+> 📖 相关文档：[README](../README.md) | [部署指南](GUIDE.md) | [技术细节](TECH_DETAILS.md)
+
 ## 0. 约定
 
 - Base URL：`https://<your-project>.deno.dev`

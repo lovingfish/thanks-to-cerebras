@@ -64,38 +64,26 @@
 
 ## Get Started
 
-1. 获取 Cerebras Key:
-   - 点击 [Cerebras官网](https://www.cerebras.ai/) 找右上角。
+1. **获取 Cerebras Key**：访问 [Cerebras 官网](https://www.cerebras.ai/) 注册获取
 
-2. 部署到 Deno:
-   - **推荐（Fork + Git 部署）**：点击下方按钮一键 Fork 并部署到新 Deno Deploy（`console.deno.com`），入口文件选择 `main.ts`：
+2. **部署到 Deno Deploy**：点击按钮一键部署
 
-      [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
+   [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
-      > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
-      > 如果你在控制台看到 `An app must either have an entrypoint to start...`，去左侧 Build/Settings 把 Entrypoint 选成 `main.ts` 再 Deploy。
+   > ⚠️ **必须手动关联 KV 数据库**，否则数据会丢失。详见 [部署指南](docs/GUIDE.md)。
 
-   - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
-     1000ms）。
+3. **首次配置**：访问部署地址，设置管理密码，添加 API 密钥
 
-3. 首次配置:
-   - 访问 `https://<项目名>.deno.dev/`
-   - **首次访问需设置管理密码**（至少 4 位）
-   - 登录后在「API 密钥」标签页添加 Cerebras API 密钥
-   - （可选）在「访问控制」标签页创建代理访问密钥
-
-4. 配置沉浸式翻译:
-   - API Key: 若未创建代理密钥则任意填写；若已创建则填写代理密钥（格式
-     `cpk_xxx`）
-   - 上游地址: `https://<你的Deno项目名>.deno.dev/v1/chat/completions`
-   - 模型: 任意填写，会自动映射到模型池轮询
+4. **配置沉浸式翻译**：
+   - 上游地址：`https://<项目名>.deno.dev/v1/chat/completions`
+   - API Key：代理密钥（如已创建）或任意值
+   - 模型：任意
 
 <div align="center">
-  <p>沉浸式翻译配置</p>
-  <img src="image/配置说明2.png" alt="沉浸式翻译" width="70%">
+  <img src="image/配置说明2.png" alt="沉浸式翻译配置" width="70%">
 </div>
 
-详细部署步骤与运维说明请查看 [部署指南](docs/GUIDE.md)。
+📖 详细部署与运维说明：[部署指南](docs/GUIDE.md) | [API 文档](docs/API.md) | [技术细节](docs/TECH_DETAILS.md)
 
 ## Short Glance at Implementation
 
@@ -126,32 +114,11 @@ sequenceDiagram
 
 ## Development
 
-### 本地运行
-
 ```bash
 deno run --allow-net --allow-env --allow-read --allow-write main.ts
 ```
 
-KV 数据存储在 `.deno-kv-local/kv.sqlite3`。
-
-> 如果你看到 `TypeError: Deno.openKv is not a function`：说明运行环境没有启用 KV
-> 的不稳定特性。此仓库已在 `deno.json` 里声明 `"unstable": ["kv"]`；请确保你的部署方式会加载该配置（推荐直接从 Git 部署到 Deno Deploy）。
-
-### API 接口
-
-代理接口：
-
-- `POST /v1/chat/completions` - OpenAI 兼容，支持流式
-- `GET /v1/models` - 返回模型列表
-
-管理接口（需登录或传递鉴权密钥）：
-
-- `GET/POST/DELETE /api/proxy-keys` - 代理密钥管理
-- `GET/POST/DELETE /api/keys` - Cerebras API 密钥管理
-- `GET/PUT /api/models` - 模型池管理
-- `POST /api/models/<name>/test` - 模型测活
-- `GET /api/models/catalog` / `POST /api/models/catalog/refresh` - 模型目录
-- `GET /api/stats` - 统计信息
+本地 KV 数据存储在 `.deno-kv-local/kv.sqlite3`。
 
 ## Acknowledgments
 

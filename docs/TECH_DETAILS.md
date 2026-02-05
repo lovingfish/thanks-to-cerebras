@@ -1,5 +1,7 @@
 # 技术细节
 
+> 📖 相关文档：[README](../README.md) | [部署指南](GUIDE.md) | [API 文档](API.md)
+
 ## 架构概述
 
 ```

@@ -1,10 +1,12 @@
 # 部署指南（仅支持 Git 部署）
 
+> 📖 相关文档：[README](../README.md) | [API 文档](API.md) | [技术细节](TECH_DETAILS.md)
+
 ## 核心要点（先看这个）
 
 - 唯一支持的部署方式：**从 Git 仓库部署到新 Deno Deploy**（`https://console.deno.com/`）
 - 服务入口：`main.ts`
-- 配置持久化：Deno KV（由仓库内 `deno.json` 启用 `unstable: ["kv"]`）
+- 配置持久化：Deno KV（**需要在控制台手动创建并关联数据库**）
 - 管理面板：首次访问必须设置管理密码
 - 代理鉴权：通过管理面板创建代理密钥动态控制
 
@@ -34,15 +36,23 @@ GitHub Repo  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
 
 3. 在侧边栏/Build Config 里确认入口文件为 `main.ts`，然后 Deploy
    - 如果你看到 `An app must either have an entrypoint to start...`，说明 Entrypoint 为空：手动选 `main.ts` 再 Deploy
-4. 打开 `https://<project>.deno.dev/`
 
-### 2. （可选）调整 KV 刷盘间隔
+### 2. 创建并关联 KV 数据库（必须）
 
-默认每 15 秒刷盘一次（最小 1000ms）。部署后登录管理面板，在「访问控制」→「高级设置」里调整。
+> **⚠️ 重要：新版 Deno Deploy 不会自动创建 KV 数据库，必须手动配置！**
+>
+> 如果跳过这一步，所有数据（管理密码、API 密钥等）都会在刷新后丢失。
+
+1. 在 Deno Deploy 控制台左侧导航栏点击 **Databases**
+2. 点击 **Provision Database** → 选择 **Deno KV** → 输入名称（如 `cerebras-kv`）→ 创建
+3. 在数据库列表找到刚创建的数据库，点击 **Assign** → 选择你的应用
+4. 等待状态变为 **Connected**
 
 ### 3. 验证部署
 
-访问日志，应看到：
+访问 `https://<project>.deno.dev/`，应看到管理面板登录页面。
+
+查看日志应显示：
 
 ```
 Cerebras Proxy 启动
@@ -58,6 +68,10 @@ Cerebras Proxy 启动
 2. 设置管理密码（至少 4 位）
 3. 登录后添加 Cerebras API 密钥
 4. （可选）创建代理访问密钥
+
+### 5. （可选）调整 KV 刷盘间隔
+
+默认每 15 秒刷盘一次（最小 1000ms）。部署后登录管理面板，在「访问控制」→「高级设置」里调整。
 
 ## 运维说明
 
@@ -98,6 +112,12 @@ Model: 任意
 ```
 
 ## 常见问题
+
+**刷新后数据全丢了（管理密码、API 密钥等）**
+
+新版 Deno Deploy 需要手动创建并关联 KV 数据库。如果没有关联，`Deno.openKv()` 返回的是临时内存 KV，请求结束数据就丢失了。
+
+解决方案：按照上面「创建并关联 KV 数据库」步骤操作。
 
 **"没有可用的 API 密钥"** 至少保留一个状态为 active 的 Cerebras API 密钥。
 
