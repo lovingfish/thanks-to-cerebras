@@ -33,6 +33,7 @@ GitHub Repo  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
    [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
 3. 在侧边栏/Build Config 里确认入口文件为 `deno.ts`，然后 Deploy
+   - 如果你看到 `An app must either have an entrypoint to start...`，说明 Entrypoint 为空：手动选 `deno.ts` 再 Deploy
 4. 打开 `https://<project>.deno.dev/`
 
 ### 2. （可选）调整 KV 刷盘间隔

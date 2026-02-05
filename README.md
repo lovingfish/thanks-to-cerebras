@@ -73,6 +73,7 @@
       [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
       > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
+      > 如果你在控制台看到 `An app must either have an entrypoint to start...`，去左侧 Build/Settings 把 Entrypoint 选成 `deno.ts` 再 Deploy。
 
    - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
      1000ms）。
