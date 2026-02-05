@@ -240,15 +240,15 @@ export async function renderAdminPage(): Promise<Response> {
       <div id="keysTab" class="tab-content active">
         <div class="stats-row">
           <div class="stat-item">
-            <div class="stat-value">${stats.totalKeys}</div>
+            <div class="stat-value" id="statTotalKeys">${stats.totalKeys}</div>
             <div class="stat-label">总密钥</div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">${stats.activeKeys}</div>
+            <div class="stat-value" id="statActiveKeys">${stats.activeKeys}</div>
             <div class="stat-label">活跃</div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">${stats.totalRequests}</div>
+            <div class="stat-value" id="statTotalRequests">${stats.totalRequests}</div>
             <div class="stat-label">请求数</div>
           </div>
         </div>
@@ -874,6 +874,15 @@ export async function renderAdminPage(): Promise<Response> {
           showNotification('加载失败: ' + getApiErrorMessage(res, data), 'error');
           return;
         }
+
+        // Update stats
+        const keys = data.keys || [];
+        const totalKeys = keys.length;
+        const activeKeys = keys.filter(k => k.status === 'active').length;
+        const statTotalEl = document.getElementById('statTotalKeys');
+        const statActiveEl = document.getElementById('statActiveKeys');
+        if (statTotalEl) statTotalEl.textContent = String(totalKeys);
+        if (statActiveEl) statActiveEl.textContent = String(activeKeys);
 
         const container = document.getElementById('keysContainer');
         if (data.keys?.length > 0) {
