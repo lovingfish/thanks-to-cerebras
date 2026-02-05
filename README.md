@@ -66,11 +66,11 @@
 
 1. **获取 Cerebras Key**：访问 [Cerebras 官网](https://www.cerebras.ai/) 注册获取
 
-2. **部署到 Deno Deploy**：点击按钮一键部署
-
-   [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
-
-   > ⚠️ **必须手动关联 KV 数据库**，否则数据会丢失。详见 [部署指南](docs/GUIDE.md)。
+2. **部署到 Deno Deploy**：
+   1. 点击本页右上角 **Fork** 按钮，fork 到你的 GitHub 账号
+   2. 打开 [Deno Deploy 控制台](https://console.deno.com/)，创建新项目
+   3. 选择你 fork 的仓库，入口文件选 `main.ts`，部署
+   4. **关联 KV 数据库**（必须）：详见 [部署指南](docs/GUIDE.md#2-创建并关联-kv-数据库必须)
 
 3. **首次配置**：访问部署地址，设置管理密码，添加 API 密钥
 

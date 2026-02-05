@@ -22,20 +22,19 @@
 
 ## 部署流程
 
-### 1. 一键 Fork + 部署（推荐且唯一支持）
+### 1. Fork 并部署到 Deno Deploy
 
 ```
-GitHub Repo  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
+GitHub Fork  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
    (main.ts + deno.json)         (entry: main.ts)            (admin UI)
 ```
 
-1. 打开新 Deno Deploy 控制台：`https://console.deno.com/`
-2. 点击按钮一键 Fork 并创建应用：
+1. 在 GitHub 上 **Fork** 本仓库到你的账号
+2. 打开 [Deno Deploy 控制台](https://console.deno.com/)，创建新项目
+3. 选择你 fork 的仓库，入口文件选 `main.ts`
+4. 点击 Deploy
 
-   [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
-
-3. 在侧边栏/Build Config 里确认入口文件为 `main.ts`，然后 Deploy
-   - 如果你看到 `An app must either have an entrypoint to start...`，说明 Entrypoint 为空：手动选 `main.ts` 再 Deploy
+> 💡 同步上游更新：在你的 Fork 仓库页面点击 **Sync fork** 按钮
 
 ### 2. 创建并关联 KV 数据库（必须）
 
