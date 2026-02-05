@@ -70,11 +70,10 @@
 2. 部署到 Deno:
    - **推荐（Fork + Git 部署）**：点击下方按钮一键 Fork 并部署到新 Deno Deploy（`console.deno.com`），入口文件选择 `deno.ts`：
 
-     [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
+      [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
-     > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
+      > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
 
-   - 其他部署方式（Playgrounds + bundle / Deploy Classic）见 [部署指南](docs/GUIDE.md)。
    - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
      1000ms）。
 
@@ -103,7 +102,7 @@
 风格请求）原样接进来，在代理里做最少的"管控"（鉴权/模型映射/Key
 轮询），然后把响应流式转发回去。
 
-处理流水线：
+处理流水线如下：
 
 ```mermaid
 sequenceDiagram

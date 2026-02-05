@@ -18,7 +18,7 @@ function assertKvSupported(): void {
     "",
     "可选修复：",
     '- 本地运行：使用 `--unstable-kv`，或在 `deno.json` 里添加 `"unstable": ["kv"]`',
-    '- Deno Deploy：在 Playgrounds 里新增 `deno.json` 文件并写入 `{ "unstable": ["kv"] }`，或在 Build Config 启用 KV/unstable',
+    "- Deno Deploy：请使用 Git 部署并确保仓库根目录的 `deno.json` 被加载（本仓库已内置），必要时在 Build Config 启用 KV/unstable",
     "",
     "当前运行时给的报错：`Deno.openKv is not a function`",
   ].join("\n");
