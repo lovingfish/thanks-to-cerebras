@@ -1,0 +1,8 @@
+.git
+.github
+*.md
+image/
+.deno-kv-local*/
+src/.deno-kv-local*/
+.vscode
+docs/
