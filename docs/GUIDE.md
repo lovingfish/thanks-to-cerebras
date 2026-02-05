@@ -3,7 +3,7 @@
 ## 核心要点（先看这个）
 
 - 唯一支持的部署方式：**从 Git 仓库部署到新 Deno Deploy**（`https://console.deno.com/`）
-- 服务入口：`deno.ts`
+- 服务入口：`main.ts`
 - 配置持久化：Deno KV（由仓库内 `deno.json` 启用 `unstable: ["kv"]`）
 - 管理面板：首次访问必须设置管理密码
 - 代理鉴权：通过管理面板创建代理密钥动态控制
@@ -24,7 +24,7 @@
 
 ```
 GitHub Repo  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
-   (deno.ts + deno.json)         (entry: deno.ts)            (admin UI)
+   (main.ts + deno.json)         (entry: main.ts)            (admin UI)
 ```
 
 1. 打开新 Deno Deploy 控制台：`https://console.deno.com/`
@@ -32,8 +32,8 @@ GitHub Repo  ->  Deno Deploy（console）  ->  https://<project>.deno.dev/
 
    [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
-3. 在侧边栏/Build Config 里确认入口文件为 `deno.ts`，然后 Deploy
-   - 如果你看到 `An app must either have an entrypoint to start...`，说明 Entrypoint 为空：手动选 `deno.ts` 再 Deploy
+3. 在侧边栏/Build Config 里确认入口文件为 `main.ts`，然后 Deploy
+   - 如果你看到 `An app must either have an entrypoint to start...`，说明 Entrypoint 为空：手动选 `main.ts` 再 Deploy
 4. 打开 `https://<project>.deno.dev/`
 
 ### 2. （可选）调整 KV 刷盘间隔
@@ -103,7 +103,7 @@ Model: 任意
 
 **`TypeError: Deno.openKv is not a function`**
 
-- 本项目依赖 Deno KV；请确认你是通过 Git 部署（仓库内含 `deno.json`）且入口文件为 `deno.ts`
+- 本项目依赖 Deno KV；请确认你是通过 Git 部署（仓库内含 `deno.json`）且入口文件为 `main.ts`
 - 如果你硬要用 Playgrounds 复制粘贴，那就别来提 issue（本项目不支持）
 
 **401 Unauthorized** 检查是否创建了代理密钥，客户端是否携带正确的 Bearer token。

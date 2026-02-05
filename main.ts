@@ -1,4 +1,4 @@
-// deno.ts - Cerebras API 代理与密钥管理系统
+// main.ts - Cerebras API 代理与密钥管理系统
 
 import { CORS_HEADERS } from "./src/constants.ts";
 import { problemResponse } from "./src/http.ts";

@@ -18,10 +18,10 @@ jobs:
         with:
           deno-version: v2.x
       - name: deno fmt --check
-        run: deno fmt --check deno.ts deno_test.ts src
+        run: deno fmt --check main.ts deno_test.ts src
       - name: deno lint
-        run: deno lint deno.ts deno_test.ts src
+        run: deno lint main.ts deno_test.ts src
       - name: deno check
-        run: deno check deno.ts deno_test.ts src
+        run: deno check main.ts deno_test.ts src
       - name: deno test
         run: deno test deno_test.ts

@@ -1,15 +1,18 @@
 {
   "unstable": ["kv"],
   "deploy": {
-    "entrypoint": "deno.ts"
+    "runtime": {
+      "type": "dynamic",
+      "entrypoint": "main.ts"
+    }
   },
   "tasks": {
-    "dev": "deno run --allow-net --allow-env --allow-read --allow-write deno.ts",
-    "start": "deno run --allow-net --allow-env --allow-read --allow-write deno.ts",
+    "dev": "deno run --allow-net --allow-env --allow-read --allow-write main.ts",
+    "start": "deno run --allow-net --allow-env --allow-read --allow-write main.ts",
     "test": "deno test deno_test.ts",
-    "check": "deno check deno.ts deno_test.ts src",
-    "lint": "deno lint deno.ts deno_test.ts src",
-    "fmt:check": "deno fmt --check deno.ts deno_test.ts src"
+    "check": "deno check main.ts deno_test.ts src",
+    "lint": "deno lint main.ts deno_test.ts src",
+    "fmt:check": "deno fmt --check main.ts deno_test.ts src"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.18"

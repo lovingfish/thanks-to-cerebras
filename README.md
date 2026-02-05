@@ -68,12 +68,12 @@
    - 点击 [Cerebras官网](https://www.cerebras.ai/) 找右上角。
 
 2. 部署到 Deno:
-   - **推荐（Fork + Git 部署）**：点击下方按钮一键 Fork 并部署到新 Deno Deploy（`console.deno.com`），入口文件选择 `deno.ts`：
+   - **推荐（Fork + Git 部署）**：点击下方按钮一键 Fork 并部署到新 Deno Deploy（`console.deno.com`），入口文件选择 `main.ts`：
 
       [![Deploy on Deno](https://deno.com/button)](https://console.deno.com/new?clone=https://github.com/zhu-jl18/thanks-to-cerebras)
 
       > 说明：本仓库根目录包含 `deno.json`，已声明 `"unstable": ["kv"]`，可直接使用 Deno KV。
-      > 如果你在控制台看到 `An app must either have an entrypoint to start...`，去左侧 Build/Settings 把 Entrypoint 选成 `deno.ts` 再 Deploy。
+      > 如果你在控制台看到 `An app must either have an entrypoint to start...`，去左侧 Build/Settings 把 Entrypoint 选成 `main.ts` 再 Deploy。
 
    - 可在管理面板「访问控制」→「高级设置」里修改刷盘间隔（默认 15000ms；最小
      1000ms）。
@@ -129,7 +129,7 @@ sequenceDiagram
 ### 本地运行
 
 ```bash
-deno run --allow-net --allow-env --allow-read --allow-write deno.ts
+deno run --allow-net --allow-env --allow-read --allow-write main.ts
 ```
 
 KV 数据存储在 `.deno-kv-local/kv.sqlite3`。
