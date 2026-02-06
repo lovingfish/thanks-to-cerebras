@@ -1,0 +1,193 @@
+import {
+  CEREBRAS_API_URL,
+  CORS_HEADERS,
+  MAX_MODEL_NOT_FOUND_RETRIES,
+  NO_CACHE_HEADERS,
+  PROXY_REQUEST_TIMEOUT_MS,
+} from "../constants.ts";
+import {
+  fetchWithTimeout,
+  isAbortError,
+  safeJsonParse,
+} from "../utils.ts";
+import { state } from "../state.ts";
+import {
+  getNextApiKeyFast,
+  markKeyCooldownFrom429,
+  markKeyInvalid,
+} from "../api-keys.ts";
+import {
+  getNextModelFast,
+  isModelNotFoundPayload,
+  isModelNotFoundText,
+} from "../models.ts";
+import { kvMergeAllApiKeysIntoCache } from "../kv/api-keys.ts";
+import { removeModelFromPool } from "../kv/model-catalog.ts";
+import { metrics } from "../metrics.ts";
+
+export type ProxyResult =
+  | {
+    kind: "upstream";
+    body: ReadableStream<Uint8Array> | null;
+    status: number;
+    statusText: string;
+    headers: Headers;
+  }
+  | {
+    kind: "error";
+    message: string;
+    status: number;
+    retryAfterSec?: number;
+  };
+
+function applyStandardHeaders(headers: Headers): void {
+  for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    headers.set(key, value);
+  }
+  for (const [key, value] of Object.entries(NO_CACHE_HEADERS)) {
+    headers.set(key, value);
+  }
+}
+
+export async function forwardChatCompletion(
+  requestBody: Record<string, unknown>,
+): Promise<ProxyResult> {
+  let apiKeyData = getNextApiKeyFast(Date.now());
+  if (!apiKeyData) {
+    await kvMergeAllApiKeysIntoCache();
+    apiKeyData = getNextApiKeyFast(Date.now());
+  }
+  if (!apiKeyData) {
+    const now = Date.now();
+    const cooldowns = state.cachedActiveKeyIds
+      .map((id) => state.keyCooldownUntil.get(id) ?? 0)
+      .filter((ms) => ms > now);
+    const minCooldownUntil = cooldowns.length > 0
+      ? Math.min(...cooldowns)
+      : 0;
+    const retryAfterSec = minCooldownUntil > now
+      ? Math.ceil((minCooldownUntil - now) / 1000)
+      : 0;
+
+    const status = state.cachedActiveKeyIds.length > 0 ? 429 : 500;
+    const outcome = status === 429 ? "no_key_cooldown" : "no_key";
+    metrics.inc("proxy_requests_total", outcome);
+    return {
+      kind: "error",
+      message: "没有可用的 API 密钥",
+      status,
+      retryAfterSec: retryAfterSec > 0 ? retryAfterSec : undefined,
+    };
+  }
+
+  let lastModelNotFound: {
+    status: number;
+    statusText: string;
+    headers: Headers;
+    bodyText: string;
+  } | null = null;
+
+  for (let attempt = 0; attempt < MAX_MODEL_NOT_FOUND_RETRIES; attempt++) {
+    const targetModel = getNextModelFast();
+    if (!targetModel) {
+      metrics.inc("proxy_requests_total", "no_model");
+      return { kind: "error", message: "没有可用的模型", status: 503 };
+    }
+    requestBody.model = targetModel;
+
+    let apiResponse: Response;
+    try {
+      apiResponse = await fetchWithTimeout(
+        CEREBRAS_API_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKeyData.key}`,
+          },
+          body: JSON.stringify(requestBody),
+        },
+        PROXY_REQUEST_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (isAbortError(error)) {
+        metrics.inc("proxy_requests_total", "timeout");
+        metrics.inc("upstream_responses_total", "timeout");
+        return { kind: "error", message: "上游请求超时", status: 504 };
+      }
+      console.error("[PROXY] upstream fetch error:", error);
+      metrics.inc("proxy_requests_total", "upstream_error");
+      metrics.inc("upstream_responses_total", "network_error");
+      return { kind: "error", message: "上游请求失败", status: 502 };
+    }
+
+    if (apiResponse.status === 404) {
+      const clone = apiResponse.clone();
+      const bodyText = await clone.text().catch(() => "");
+      const payload = safeJsonParse(bodyText);
+
+      const modelNotFound = isModelNotFoundPayload(payload) ||
+        isModelNotFoundText(bodyText);
+
+      if (modelNotFound) {
+        lastModelNotFound = {
+          status: apiResponse.status,
+          statusText: apiResponse.statusText,
+          headers: new Headers(apiResponse.headers),
+          bodyText,
+        };
+        apiResponse.body?.cancel();
+        metrics.inc("upstream_responses_total", "404_model_not_found");
+        await removeModelFromPool(targetModel, "model_not_found");
+        continue;
+      }
+    }
+
+    if (apiResponse.status === 429) {
+      markKeyCooldownFrom429(apiKeyData.id, apiResponse);
+      metrics.inc("upstream_responses_total", "429");
+    } else if (apiResponse.status === 401 || apiResponse.status === 403) {
+      await markKeyInvalid(apiKeyData.id);
+      metrics.inc(
+        "upstream_responses_total",
+        apiResponse.status === 401 ? "401" : "403",
+      );
+    } else if (apiResponse.ok) {
+      metrics.inc("upstream_responses_total", "2xx");
+    } else {
+      metrics.inc("upstream_responses_total", "other");
+    }
+
+    const responseHeaders = new Headers(apiResponse.headers);
+    applyStandardHeaders(responseHeaders);
+
+    metrics.inc("proxy_requests_total", "success");
+    return {
+      kind: "upstream",
+      body: apiResponse.body,
+      status: apiResponse.status,
+      statusText: apiResponse.statusText,
+      headers: responseHeaders,
+    };
+  }
+
+  if (lastModelNotFound) {
+    const responseHeaders = new Headers(lastModelNotFound.headers);
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+    responseHeaders.delete("transfer-encoding");
+    applyStandardHeaders(responseHeaders);
+
+    metrics.inc("proxy_requests_total", "no_model");
+    return {
+      kind: "upstream",
+      body: new Blob([lastModelNotFound.bodyText]).stream(),
+      status: lastModelNotFound.status,
+      statusText: lastModelNotFound.statusText,
+      headers: responseHeaders,
+    };
+  }
+
+  metrics.inc("proxy_requests_total", "no_model");
+  return { kind: "error", message: "模型不可用", status: 502 };
+}

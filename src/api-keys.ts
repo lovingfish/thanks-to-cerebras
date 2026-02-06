@@ -1,3 +1,4 @@
+import { API_KEY_PREFIX } from "./constants.ts";
 import { state } from "./state.ts";
 
 export function rebuildActiveKeyIds(): void {
@@ -54,12 +55,18 @@ export function markKeyCooldownFrom429(id: string, response: Response): void {
   state.keyCooldownUntil.set(id, Date.now() + Math.max(0, retryAfterMs));
 }
 
-export function markKeyInvalid(id: string): void {
+export async function markKeyInvalid(id: string): Promise<void> {
   const keyEntry = state.cachedKeysById.get(id);
   if (!keyEntry) return;
   if (keyEntry.status === "invalid") return;
   keyEntry.status = "invalid";
-  state.dirtyKeyIds.add(id);
   state.keyCooldownUntil.delete(id);
+  state.dirtyKeyIds.delete(id);
   rebuildActiveKeyIds();
+  try {
+    await state.kv.set([...API_KEY_PREFIX, id], keyEntry);
+  } catch (error) {
+    state.dirtyKeyIds.add(id);
+    console.error("[KV] markKeyInvalid immediate write failed:", error);
+  }
 }

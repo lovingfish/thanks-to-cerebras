@@ -1,100 +1,13 @@
-import {
-  CEREBRAS_API_URL,
-  FALLBACK_MODEL,
-  UPSTREAM_TEST_TIMEOUT_MS,
-} from "../constants.ts";
 import { jsonResponse, problemResponse } from "../http.ts";
-import {
-  fetchWithTimeout,
-  getErrorMessage,
-  isAbortError,
-  maskKey,
-  parseBatchInput,
-  safeJsonParse,
-} from "../utils.ts";
-import { state } from "../state.ts";
+import { maskKey, parseBatchInput } from "../utils.ts";
 import {
   kvAddKey,
   kvDeleteKey,
   kvGetAllKeys,
   kvGetApiKeyById,
-  kvUpdateKey,
 } from "../kv/api-keys.ts";
-import { removeModelFromPool } from "../kv/model-catalog.ts";
-import { isModelNotFoundPayload, isModelNotFoundText } from "../models.ts";
+import { testKey } from "../services/api-keys.ts";
 import type { Router } from "../router.ts";
-
-export async function testKey(
-  id: string,
-): Promise<{ success: boolean; status: string; error?: string }> {
-  const apiKey = await kvGetApiKeyById(id);
-
-  if (!apiKey) {
-    return { success: false, status: "invalid", error: "密钥不存在" };
-  }
-
-  const testModel = state.cachedModelPool.length > 0
-    ? state.cachedModelPool[0]
-    : FALLBACK_MODEL;
-
-  try {
-    const response = await fetchWithTimeout(
-      CEREBRAS_API_URL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey.key}`,
-        },
-        body: JSON.stringify({
-          model: testModel,
-          messages: [{ role: "user", content: "test" }],
-          max_tokens: 1,
-        }),
-      },
-      UPSTREAM_TEST_TIMEOUT_MS,
-    );
-
-    if (response.ok) {
-      await kvUpdateKey(id, { status: "active" });
-      return { success: true, status: "active" };
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      await kvUpdateKey(id, { status: "invalid" });
-      return {
-        success: false,
-        status: "invalid",
-        error: `HTTP ${response.status}`,
-      };
-    }
-
-    if (response.status === 404) {
-      const clone = response.clone();
-      const bodyText = await clone.text().catch(() => "");
-      const payload = safeJsonParse(bodyText);
-      const modelNotFound = isModelNotFoundPayload(payload) ||
-        isModelNotFoundText(bodyText);
-
-      if (modelNotFound) {
-        await removeModelFromPool(testModel, "model_not_found");
-        await kvUpdateKey(id, { status: "active" });
-        return { success: true, status: "active" };
-      }
-    }
-
-    await kvUpdateKey(id, { status: "inactive" });
-    return {
-      success: false,
-      status: "inactive",
-      error: `HTTP ${response.status}`,
-    };
-  } catch (error) {
-    const msg = isAbortError(error) ? "请求超时" : getErrorMessage(error);
-    await kvUpdateKey(id, { status: "inactive" });
-    return { success: false, status: "inactive", error: msg };
-  }
-}
 
 async function listApiKeys(): Promise<Response> {
   const keys = await kvGetAllKeys();
@@ -227,8 +140,7 @@ async function testApiKey(
   _req: Request,
   params: Record<string, string>,
 ): Promise<Response> {
-  const result = await testKey(params.id);
-  return jsonResponse(result);
+  return jsonResponse(await testKey(params.id));
 }
 
 export function register(router: Router): void {
