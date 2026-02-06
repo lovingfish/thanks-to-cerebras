@@ -1,7 +1,4 @@
-import {
-  CEREBRAS_API_URL,
-  UPSTREAM_TEST_TIMEOUT_MS,
-} from "../constants.ts";
+import { CEREBRAS_API_URL, UPSTREAM_TEST_TIMEOUT_MS } from "../constants.ts";
 import {
   fetchWithTimeout,
   getErrorMessage,

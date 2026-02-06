@@ -1,5 +1,8 @@
 {
   "unstable": ["kv"],
+  "fmt": {
+    "exclude": ["src/ui/admin.html"]
+  },
   "deploy": {
     "runtime": {
       "type": "dynamic",

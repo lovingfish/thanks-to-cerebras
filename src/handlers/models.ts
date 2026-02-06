@@ -1,8 +1,8 @@
 import { MODEL_CATALOG_TTL_MS } from "../constants.ts";
 import { jsonResponse, problemResponse } from "../http.ts";
 import {
-  getCatalogData,
   forceRefreshCatalog,
+  getCatalogData,
   getModelPool,
   testModelAvailability,
   updateModelPool,

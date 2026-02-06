@@ -10,7 +10,11 @@ import { API_KEY_PREFIX, PROXY_KEY_PREFIX } from "../constants.ts";
 import { rebuildActiveKeyIds } from "../api-keys.ts";
 import { rebuildModelPoolCache } from "../models.ts";
 import { state } from "../state.ts";
-import { kvGetConfig, kvUpdateConfig, resolveKvFlushIntervalMs } from "./config.ts";
+import {
+  kvGetConfig,
+  kvUpdateConfig,
+  resolveKvFlushIntervalMs,
+} from "./config.ts";
 import { kvGetAllKeys } from "./api-keys.ts";
 import { kvGetAllProxyKeys } from "./proxy-keys.ts";
 import { metrics } from "../metrics.ts";
