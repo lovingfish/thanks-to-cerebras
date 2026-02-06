@@ -7,19 +7,19 @@ import {
 import { resolvePort } from "./src/utils.ts";
 import { createHandler, createRouter } from "./src/app.ts";
 
-const router = createRouter();
-const handler = createHandler(router);
-
-// ================================
-// 启动服务器
-// ================================
-console.log(`Cerebras Proxy 启动`);
-console.log(`- 管理面板: /`);
-console.log(`- API 代理: /v1/chat/completions`);
-console.log(`- 模型接口: /v1/models`);
-console.log(`- 存储: Deno KV`);
-
 if (import.meta.main) {
+  const router = createRouter();
+  const handler = createHandler(router);
+
+  // ================================
+  // 启动服务器
+  // ================================
+  console.log(`Cerebras Proxy 启动`);
+  console.log(`- 管理面板: /`);
+  console.log(`- API 代理: /v1/chat/completions`);
+  console.log(`- 模型接口: /v1/models`);
+  console.log(`- 存储: Deno KV`);
+
   await state.initKv();
   await bootstrapCache();
   applyKvFlushInterval(state.cachedConfig);

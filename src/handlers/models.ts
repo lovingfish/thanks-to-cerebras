@@ -76,7 +76,7 @@ async function updateModels(req: Request): Promise<Response> {
   } catch (error) {
     console.error("[MODELS] update pool error:", error);
     return problemResponse("模型池更新失败", {
-      status: 400,
+      status: 500,
       instance: "/api/models",
     });
   }

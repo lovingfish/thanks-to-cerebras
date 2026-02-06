@@ -83,6 +83,7 @@ export async function flushDirtyToKv(): Promise<void> {
     }
 
     if (!flushConfig || pendingRequestsSnapshot <= 0) {
+      metrics.inc("flush_total", "success");
       return;
     }
 

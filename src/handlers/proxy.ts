@@ -36,7 +36,7 @@ async function handleProxyEndpoint(req: Request): Promise<Response> {
     requestBody = await req.json();
   } catch {
     metrics.inc("proxy_requests_total", "bad_request");
-    return jsonError("代理请求处理失败", 500);
+    return jsonError("无效的 JSON 请求体", 400);
   }
 
   if (

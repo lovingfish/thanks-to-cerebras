@@ -8,7 +8,7 @@ import {
 import { state } from "../state.ts";
 import type { ModelCatalog } from "../types.ts";
 import { kvGetAllKeys, kvUpdateKey } from "../kv/api-keys.ts";
-import { kvUpdateConfig } from "../kv/config.ts";
+import { kvGetConfig, kvUpdateConfig } from "../kv/config.ts";
 import {
   isModelCatalogFresh,
   kvGetModelCatalog,
@@ -92,7 +92,6 @@ export async function updateModelPool(models: string[]): Promise<void> {
 export async function getModelPool(): Promise<string[]> {
   const config = state.cachedConfig;
   if (config) return normalizeModelPool(config.modelPool);
-  const { kvGetConfig } = await import("../kv/config.ts");
   const c = await kvGetConfig();
   return normalizeModelPool(c.modelPool);
 }
@@ -131,6 +130,7 @@ export async function testModelAvailability(
 
     if (response.ok) {
       metrics.inc("upstream_responses_total", "2xx");
+      await response.body?.cancel();
       return { success: true, status: "available" };
     }
 
@@ -143,6 +143,7 @@ export async function testModelAvailability(
 
       if (modelNotFound) {
         metrics.inc("upstream_responses_total", "404_model_not_found");
+        await response.body?.cancel();
         await removeModelFromPool(modelName, "model_not_found");
         return {
           success: false,
@@ -158,10 +159,13 @@ export async function testModelAvailability(
         response.status === 401 ? "401" : "403",
       );
       await kvUpdateKey(activeKey.id, { status: "invalid" });
+      const cached = state.cachedKeysById.get(activeKey.id);
+      if (cached) cached.status = "invalid";
     } else {
       metrics.inc("upstream_responses_total", "other");
     }
 
+    await response.body?.cancel();
     return {
       success: false,
       status: "unavailable",

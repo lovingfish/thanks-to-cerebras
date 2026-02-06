@@ -46,11 +46,13 @@ export async function testKey(
     );
 
     if (response.ok) {
+      await response.body?.cancel();
       await kvUpdateKey(id, { status: "active" });
       return { success: true, status: "active" };
     }
 
     if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel();
       await kvUpdateKey(id, { status: "invalid" });
       return {
         success: false,
@@ -60,19 +62,20 @@ export async function testKey(
     }
 
     if (response.status === 404) {
-      const clone = response.clone();
-      const bodyText = await clone.text().catch(() => "");
+      const bodyText = await response.clone().text().catch(() => "");
       const payload = safeJsonParse(bodyText);
       const modelNotFound = isModelNotFoundPayload(payload) ||
         isModelNotFoundText(bodyText);
 
       if (modelNotFound) {
+        await response.body?.cancel();
         await removeModelFromPool(testModel, "model_not_found");
         await kvUpdateKey(id, { status: "active" });
         return { success: true, status: "active" };
       }
     }
 
+    await response.body?.cancel();
     await kvUpdateKey(id, { status: "inactive" });
     return {
       success: false,

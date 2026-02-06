@@ -22,7 +22,9 @@ function makeReq(
   const init: RequestInit = {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(options.body !== undefined
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...(options.headers ?? {}),
     },
   };
@@ -46,11 +48,8 @@ async function setupKv(): Promise<Deno.Kv> {
 }
 
 async function setupAuth(handler: Handler): Promise<string> {
-  await handler(
-    makeReq("POST", "/api/auth/setup", { body: { password: "test1234" } }),
-  );
   const res = await handler(
-    makeReq("POST", "/api/auth/login", { body: { password: "test1234" } }),
+    makeReq("POST", "/api/auth/setup", { body: { password: "test1234" } }),
   );
   const { token } = await res.json();
   return token;
