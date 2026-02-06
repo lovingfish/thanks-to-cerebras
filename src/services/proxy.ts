@@ -87,7 +87,7 @@ export async function forwardChatCompletion(
       metrics.inc("proxy_requests_total", "no_model");
       return { kind: "error", message: "没有可用的模型", status: 503 };
     }
-    requestBody.model = targetModel;
+    const body = { ...requestBody, model: targetModel };
 
     let apiResponse: Response;
     try {
@@ -99,7 +99,7 @@ export async function forwardChatCompletion(
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKeyData.key}`,
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(body),
         },
         PROXY_REQUEST_TIMEOUT_MS,
       );
