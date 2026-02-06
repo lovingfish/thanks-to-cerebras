@@ -5,11 +5,7 @@ import {
   NO_CACHE_HEADERS,
   PROXY_REQUEST_TIMEOUT_MS,
 } from "../constants.ts";
-import {
-  fetchWithTimeout,
-  isAbortError,
-  safeJsonParse,
-} from "../utils.ts";
+import { fetchWithTimeout, isAbortError, safeJsonParse } from "../utils.ts";
 import { state } from "../state.ts";
 import {
   getNextApiKeyFast,
@@ -62,9 +58,7 @@ export async function forwardChatCompletion(
     const cooldowns = state.cachedActiveKeyIds
       .map((id) => state.keyCooldownUntil.get(id) ?? 0)
       .filter((ms) => ms > now);
-    const minCooldownUntil = cooldowns.length > 0
-      ? Math.min(...cooldowns)
-      : 0;
+    const minCooldownUntil = cooldowns.length > 0 ? Math.min(...cooldowns) : 0;
     const retryAfterSec = minCooldownUntil > now
       ? Math.ceil((minCooldownUntil - now) / 1000)
       : 0;

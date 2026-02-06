@@ -33,7 +33,10 @@ if (import.meta.main) {
         await Promise.race([
           flushDirtyToKv(),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("flush timeout")), FLUSH_TIMEOUT_MS)
+            setTimeout(
+              () => reject(new Error("flush timeout")),
+              FLUSH_TIMEOUT_MS,
+            )
           ),
         ]);
         console.log("[SHUTDOWN] flush complete.");

@@ -1,9 +1,6 @@
 import { MIN_KV_FLUSH_INTERVAL_MS } from "../constants.ts";
 import { jsonResponse, problemResponse } from "../http.ts";
-import {
-  maskKey,
-  normalizeKvFlushIntervalMs,
-} from "../utils.ts";
+import { maskKey, normalizeKvFlushIntervalMs } from "../utils.ts";
 import { state } from "../state.ts";
 import { kvGetAllKeys } from "../kv/api-keys.ts";
 import {
