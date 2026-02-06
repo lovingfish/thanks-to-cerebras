@@ -1,8 +1,9 @@
 import { ADMIN_CORS_HEADERS, CORS_HEADERS } from "./constants.ts";
-import { problemResponse } from "./http.ts";
+import { jsonResponse, problemResponse } from "./http.ts";
 import { isAdminAuthorized } from "./auth.ts";
 import { Router } from "./router.ts";
 import { renderAdminPage } from "./ui/admin.ts";
+import { metrics } from "./metrics.ts";
 
 import { register as registerAuth } from "./handlers/auth.ts";
 import { register as registerProxyKeys } from "./handlers/proxy-keys.ts";
@@ -21,6 +22,7 @@ export function createRouter(): Router {
   registerProxy(router);
   router
     .get("/healthz", () => new Response("ok", { status: 200 }))
+    .get("/api/metrics", () => jsonResponse(metrics.snapshot()))
     .get("/", () => renderAdminPage());
   return router;
 }

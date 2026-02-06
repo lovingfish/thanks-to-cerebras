@@ -1,3 +1,10 @@
+// ── Write Strategy ──
+// Immediate KV writes: all user-initiated CRUD (add/delete/update keys,
+//   proxy keys, config CAS, auth tokens, model catalog, markKeyInvalid).
+// Dirty + flush (this module): hot-path stats only — useCount, lastUsed,
+//   totalRequests. These are batched via a periodic timer to avoid
+//   per-request KV overhead on the proxy critical path.
+
 import type { ProxyConfig } from "../types.ts";
 import { API_KEY_PREFIX, PROXY_KEY_PREFIX } from "../constants.ts";
 import { rebuildActiveKeyIds } from "../api-keys.ts";
@@ -6,6 +13,7 @@ import { state } from "../state.ts";
 import { kvGetConfig, kvUpdateConfig, resolveKvFlushIntervalMs } from "./config.ts";
 import { kvGetAllKeys } from "./api-keys.ts";
 import { kvGetAllProxyKeys } from "./proxy-keys.ts";
+import { metrics } from "../metrics.ts";
 
 export { resolveKvFlushIntervalMs } from "./config.ts";
 
@@ -65,6 +73,7 @@ export async function flushDirtyToKv(): Promise<void> {
       for (const id of keyIds) state.dirtyKeyIds.add(id);
       for (const id of proxyKeyIds) state.dirtyProxyKeyIds.add(id);
       state.dirtyConfig = state.dirtyConfig || flushConfig;
+      metrics.inc("flush_total", "failure");
       console.error(`[KV] flush failed:`, error);
       return;
     }
@@ -80,8 +89,10 @@ export async function flushDirtyToKv(): Promise<void> {
       }));
       state.subtractPendingTotalRequests(pendingRequestsSnapshot);
       rebuildModelPoolCache();
+      metrics.inc("flush_total", "success");
     } catch (error) {
       state.dirtyConfig = true;
+      metrics.inc("flush_total", "failure");
       console.error(`[KV] config flush failed:`, error);
     }
   } finally {

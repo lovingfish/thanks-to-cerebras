@@ -8,6 +8,7 @@ import {
   verifyAdminToken,
 } from "../auth.ts";
 import { loginLimiter } from "../rate-limit.ts";
+import { metrics } from "../metrics.ts";
 import type { Router } from "../router.ts";
 
 function getClientIp(req: Request): string {
@@ -29,6 +30,7 @@ async function setupAuth(req: Request): Promise<Response> {
   const ip = getClientIp(req);
   const limit = loginLimiter.check(ip);
   if (!limit.allowed) {
+    metrics.inc("rate_limit_hits_total", "setup");
     const retryAfter = Math.ceil(limit.retryAfterMs / 1000);
     return problemResponse("请求过于频繁", {
       status: 429,
@@ -68,6 +70,7 @@ async function loginAuth(req: Request): Promise<Response> {
   const ip = getClientIp(req);
   const limit = loginLimiter.check(ip);
   if (!limit.allowed) {
+    metrics.inc("rate_limit_hits_total", "login");
     const retryAfter = Math.ceil(limit.retryAfterMs / 1000);
     return problemResponse("请求过于频繁", {
       status: 429,

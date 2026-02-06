@@ -3,6 +3,7 @@ import { AppState, state } from "../state.ts";
 import { createHandler, createRouter } from "../app.ts";
 import { bootstrapCache } from "../kv/flush.ts";
 import { loginLimiter } from "../rate-limit.ts";
+import { metrics } from "../metrics.ts";
 import { ADMIN_CORS_HEADERS, CORS_HEADERS } from "../constants.ts";
 
 const BASE = "http://localhost";
@@ -40,6 +41,7 @@ async function setupKv(): Promise<Deno.Kv> {
   state.kv = kv;
   await bootstrapCache();
   loginLimiter.reset();
+  metrics.reset();
   return kv;
 }
 
@@ -522,6 +524,35 @@ Deno.test("integration: unknown path returns 404", async () => {
 
   const res = await handler(makeReq("GET", "/nonexistent"));
   assertEquals(res.status, 404);
+
+  kv.close();
+});
+
+// ─── Metrics ───
+
+Deno.test("integration: /api/metrics returns counters (requires auth)", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+
+  await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+
+  const res = await handler(
+    makeReq("GET", "/api/metrics", {
+      headers: { "X-Admin-Token": token },
+    }),
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(typeof body, "object");
+  assertEquals(typeof body.proxy_requests_total, "object");
+
+  const noAuth = await handler(makeReq("GET", "/api/metrics"));
+  assertEquals(noAuth.status, 401);
 
   kv.close();
 });
