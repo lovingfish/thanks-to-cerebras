@@ -6,7 +6,13 @@ import type {
 } from "./types.ts";
 import { DEFAULT_KV_FLUSH_INTERVAL_MS } from "./constants.ts";
 
-export const isDenoDeployment = Boolean(Deno.env.get("DENO_DEPLOYMENT_ID"));
+let _isDenoDeployment: boolean | undefined;
+export function isDenoDeployment(): boolean {
+  if (_isDenoDeployment === undefined) {
+    _isDenoDeployment = Boolean(Deno.env.get("DENO_DEPLOYMENT_ID"));
+  }
+  return _isDenoDeployment;
+}
 
 export class AppState {
   kv!: Deno.Kv;
@@ -48,7 +54,7 @@ export class AppState {
 
   async initKv(): Promise<void> {
     assertKvSupported();
-    if (isDenoDeployment) {
+    if (isDenoDeployment()) {
       this.kv = await Deno.openKv();
       return;
     }

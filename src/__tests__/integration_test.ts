@@ -1,32 +1,23 @@
 import { assertEquals } from "@std/assert";
-import { state, AppState } from "../state.ts";
-import { Router } from "../router.ts";
+import { AppState, state } from "../state.ts";
+import { createHandler, createRouter } from "../app.ts";
 import { bootstrapCache } from "../kv/flush.ts";
-import { register as registerAuth } from "../handlers/auth.ts";
-import { register as registerProxyKeys } from "../handlers/proxy-keys.ts";
-import { register as registerApiKeys } from "../handlers/api-keys.ts";
-import { register as registerConfig } from "../handlers/config.ts";
-import { isAdminAuthorized } from "../auth.ts";
-import { problemResponse } from "../http.ts";
 import { loginLimiter } from "../rate-limit.ts";
+import { ADMIN_CORS_HEADERS, CORS_HEADERS } from "../constants.ts";
 
 const BASE = "http://localhost";
 
-function buildRouter(): Router {
-  const router = new Router();
-  registerAuth(router);
-  registerProxyKeys(router);
-  registerApiKeys(router);
-  registerConfig(router);
-  return router;
+type Handler = (req: Request) => Promise<Response>;
+
+function buildHandler(): Handler {
+  return createHandler(createRouter());
 }
 
-async function dispatch(
-  router: Router,
+function makeReq(
   method: string,
   path: string,
   options: { headers?: Record<string, string>; body?: unknown } = {},
-): Promise<Response> {
+): Request {
   const init: RequestInit = {
     method,
     headers: {
@@ -37,20 +28,7 @@ async function dispatch(
   if (options.body !== undefined) {
     init.body = JSON.stringify(options.body);
   }
-
-  if (
-    path.startsWith("/api/") && !path.startsWith("/api/auth/")
-  ) {
-    const authReq = new Request(`${BASE}${path}`, { ...init });
-    if (!(await isAdminAuthorized(authReq))) {
-      return problemResponse("未登录", { status: 401, instance: path });
-    }
-  }
-
-  const req = new Request(`${BASE}${path}`, init);
-  const matched = router.match(method, req.url);
-  if (!matched) return new Response("Not Found", { status: 404 });
-  return matched.handler(req, matched.params);
+  return new Request(`${BASE}${path}`, init);
 }
 
 async function setupKv(): Promise<Deno.Kv> {
@@ -65,57 +43,71 @@ async function setupKv(): Promise<Deno.Kv> {
   return kv;
 }
 
+async function setupAuth(handler: Handler): Promise<string> {
+  await handler(
+    makeReq("POST", "/api/auth/setup", { body: { password: "test1234" } }),
+  );
+  const res = await handler(
+    makeReq("POST", "/api/auth/login", { body: { password: "test1234" } }),
+  );
+  const { token } = await res.json();
+  return token;
+}
+
 // ─── Auth Flow ───
 
 Deno.test("integration: auth setup → login → logout", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
+  const handler = buildHandler();
 
-  const status1 = await (await dispatch(router, "GET", "/api/auth/status"))
-    .json();
+  const status1 = await (await handler(
+    makeReq("GET", "/api/auth/status"),
+  )).json();
   assertEquals(status1.hasPassword, false);
   assertEquals(status1.isLoggedIn, false);
 
-  const setupRes = await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
+  const setupRes = await handler(
+    makeReq("POST", "/api/auth/setup", { body: { password: "test1234" } }),
+  );
   assertEquals(setupRes.status, 200);
   const setupBody = await setupRes.json();
   assertEquals(setupBody.success, true);
   const token = setupBody.token;
 
-  const status2 = await (
-    await dispatch(router, "GET", "/api/auth/status", {
+  const status2 = await (await handler(
+    makeReq("GET", "/api/auth/status", {
       headers: { "X-Admin-Token": token },
-    })
-  ).json();
+    }),
+  )).json();
   assertEquals(status2.isLoggedIn, true);
 
-  const dupRes = await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "other" },
-  });
+  const dupRes = await handler(
+    makeReq("POST", "/api/auth/setup", { body: { password: "other" } }),
+  );
   assertEquals(dupRes.status, 400);
 
-  const loginRes = await dispatch(router, "POST", "/api/auth/login", {
-    body: { password: "test1234" },
-  });
+  const loginRes = await handler(
+    makeReq("POST", "/api/auth/login", { body: { password: "test1234" } }),
+  );
   assertEquals(loginRes.status, 200);
   const loginBody = await loginRes.json();
   assertEquals(loginBody.success, true);
 
-  const badLogin = await dispatch(router, "POST", "/api/auth/login", {
-    body: { password: "wrong" },
-  });
+  const badLogin = await handler(
+    makeReq("POST", "/api/auth/login", { body: { password: "wrong" } }),
+  );
   assertEquals(badLogin.status, 401);
 
-  await dispatch(router, "POST", "/api/auth/logout", {
-    headers: { "X-Admin-Token": token },
-  });
-  const status3 = await (
-    await dispatch(router, "GET", "/api/auth/status", {
+  await handler(
+    makeReq("POST", "/api/auth/logout", {
       headers: { "X-Admin-Token": token },
-    })
-  ).json();
+    }),
+  );
+  const status3 = await (await handler(
+    makeReq("GET", "/api/auth/status", {
+      headers: { "X-Admin-Token": token },
+    }),
+  )).json();
   assertEquals(status3.isLoggedIn, false);
 
   kv.close();
@@ -125,9 +117,9 @@ Deno.test("integration: auth setup → login → logout", async () => {
 
 Deno.test("integration: admin endpoints require auth", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
+  const handler = buildHandler();
 
-  const res = await dispatch(router, "GET", "/api/keys");
+  const res = await handler(makeReq("GET", "/api/keys"));
   assertEquals(res.status, 401);
 
   kv.close();
@@ -137,44 +129,41 @@ Deno.test("integration: admin endpoints require auth", async () => {
 
 Deno.test("integration: API key add → list → delete", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
-
-  await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
-  const loginRes = await dispatch(router, "POST", "/api/auth/login", {
-    body: { password: "test1234" },
-  });
-  const { token } = await loginRes.json();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
   const h = { "X-Admin-Token": token };
 
-  const addRes = await dispatch(router, "POST", "/api/keys", {
-    headers: h,
-    body: { key: "sk-test-abc123" },
-  });
+  const addRes = await handler(
+    makeReq("POST", "/api/keys", {
+      headers: h,
+      body: { key: "sk-test-abc123" },
+    }),
+  );
   assertEquals(addRes.status, 201);
   const addBody = await addRes.json();
   assertEquals(addBody.success, true);
   const keyId = addBody.id;
 
-  const dupRes = await dispatch(router, "POST", "/api/keys", {
-    headers: h,
-    body: { key: "sk-test-abc123" },
-  });
+  const dupRes = await handler(
+    makeReq("POST", "/api/keys", {
+      headers: h,
+      body: { key: "sk-test-abc123" },
+    }),
+  );
   assertEquals(dupRes.status, 409);
 
-  const listRes = await dispatch(router, "GET", "/api/keys", { headers: h });
+  const listRes = await handler(makeReq("GET", "/api/keys", { headers: h }));
   assertEquals(listRes.status, 200);
   const listBody = await listRes.json();
   assertEquals(listBody.keys.length, 1);
   assertEquals(listBody.keys[0].id, keyId);
 
-  const delRes = await dispatch(router, "DELETE", `/api/keys/${keyId}`, {
-    headers: h,
-  });
+  const delRes = await handler(
+    makeReq("DELETE", `/api/keys/${keyId}`, { headers: h }),
+  );
   assertEquals(delRes.status, 200);
 
-  const listRes2 = await dispatch(router, "GET", "/api/keys", { headers: h });
+  const listRes2 = await handler(makeReq("GET", "/api/keys", { headers: h }));
   const listBody2 = await listRes2.json();
   assertEquals(listBody2.keys.length, 0);
 
@@ -185,52 +174,43 @@ Deno.test("integration: API key add → list → delete", async () => {
 
 Deno.test("integration: proxy key add → list → export → delete", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
-
-  await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
-  const { token } = await (
-    await dispatch(router, "POST", "/api/auth/login", {
-      body: { password: "test1234" },
-    })
-  ).json();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
   const h = { "X-Admin-Token": token };
 
-  const addRes = await dispatch(router, "POST", "/api/proxy-keys", {
-    headers: h,
-    body: { name: "Test Key" },
-  });
+  const addRes = await handler(
+    makeReq("POST", "/api/proxy-keys", {
+      headers: h,
+      body: { name: "Test Key" },
+    }),
+  );
   assertEquals(addRes.status, 201);
   const addBody = await addRes.json();
   assertEquals(addBody.success, true);
   const pkId = addBody.id;
   const rawKey = addBody.key;
 
-  const listRes = await dispatch(router, "GET", "/api/proxy-keys", {
-    headers: h,
-  });
+  const listRes = await handler(
+    makeReq("GET", "/api/proxy-keys", { headers: h }),
+  );
   const listBody = await listRes.json();
   assertEquals(listBody.keys.length, 1);
   assertEquals(listBody.keys[0].name, "Test Key");
 
-  const exportRes = await dispatch(
-    router,
-    "GET",
-    `/api/proxy-keys/${pkId}/export`,
-    { headers: h },
+  const exportRes = await handler(
+    makeReq("GET", `/api/proxy-keys/${pkId}/export`, { headers: h }),
   );
   const exportBody = await exportRes.json();
   assertEquals(exportBody.key, rawKey);
 
-  const delRes = await dispatch(router, "DELETE", `/api/proxy-keys/${pkId}`, {
-    headers: h,
-  });
+  const delRes = await handler(
+    makeReq("DELETE", `/api/proxy-keys/${pkId}`, { headers: h }),
+  );
   assertEquals(delRes.status, 200);
 
-  const listRes2 = await dispatch(router, "GET", "/api/proxy-keys", {
-    headers: h,
-  });
+  const listRes2 = await handler(
+    makeReq("GET", "/api/proxy-keys", { headers: h }),
+  );
   const listBody2 = await listRes2.json();
   assertEquals(listBody2.keys.length, 0);
 
@@ -241,28 +221,22 @@ Deno.test("integration: proxy key add → list → export → delete", async () 
 
 Deno.test("integration: config get → update", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
-
-  await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
-  const { token } = await (
-    await dispatch(router, "POST", "/api/auth/login", {
-      body: { password: "test1234" },
-    })
-  ).json();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
   const h = { "X-Admin-Token": token };
 
-  const getRes = await dispatch(router, "GET", "/api/config", { headers: h });
+  const getRes = await handler(makeReq("GET", "/api/config", { headers: h }));
   assertEquals(getRes.status, 200);
   const getBody = await getRes.json();
   assertEquals(typeof getBody.kvFlushIntervalMs, "number");
   assertEquals(typeof getBody.totalRequests, "number");
 
-  const updateRes = await dispatch(router, "PATCH", "/api/config", {
-    headers: h,
-    body: { kvFlushIntervalMs: 5000 },
-  });
+  const updateRes = await handler(
+    makeReq("PATCH", "/api/config", {
+      headers: h,
+      body: { kvFlushIntervalMs: 5000 },
+    }),
+  );
   assertEquals(updateRes.status, 200);
   const updateBody = await updateRes.json();
   assertEquals(updateBody.success, true);
@@ -280,24 +254,20 @@ Deno.test("integration: config get → update", async () => {
 
 Deno.test("integration: stats endpoint", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
-
-  await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
-  const { token } = await (
-    await dispatch(router, "POST", "/api/auth/login", {
-      body: { password: "test1234" },
-    })
-  ).json();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
   const h = { "X-Admin-Token": token };
 
-  await dispatch(router, "POST", "/api/keys", {
-    headers: h,
-    body: { key: "sk-stat-test" },
-  });
+  await handler(
+    makeReq("POST", "/api/keys", {
+      headers: h,
+      body: { key: "sk-stat-test" },
+    }),
+  );
 
-  const statsRes = await dispatch(router, "GET", "/api/stats", { headers: h });
+  const statsRes = await handler(
+    makeReq("GET", "/api/stats", { headers: h }),
+  );
   assertEquals(statsRes.status, 200);
   const statsBody = await statsRes.json();
   assertEquals(statsBody.totalKeys, 1);
@@ -310,31 +280,248 @@ Deno.test("integration: stats endpoint", async () => {
 
 Deno.test("integration: batch import API keys", async () => {
   const kv = await setupKv();
-  const router = buildRouter();
-
-  await dispatch(router, "POST", "/api/auth/setup", {
-    body: { password: "test1234" },
-  });
-  const { token } = await (
-    await dispatch(router, "POST", "/api/auth/login", {
-      body: { password: "test1234" },
-    })
-  ).json();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
   const h = { "X-Admin-Token": token };
 
-  const batchRes = await dispatch(router, "POST", "/api/keys/batch", {
-    headers: h,
-    body: { input: "sk-batch-1\nsk-batch-2\nsk-batch-3" },
-  });
+  const batchRes = await handler(
+    makeReq("POST", "/api/keys/batch", {
+      headers: h,
+      body: { input: "sk-batch-1\nsk-batch-2\nsk-batch-3" },
+    }),
+  );
   assertEquals(batchRes.status, 200);
   const batchBody = await batchRes.json();
   assertEquals(batchBody.summary.total, 3);
   assertEquals(batchBody.summary.success, 3);
   assertEquals(batchBody.summary.failed, 0);
 
-  const listRes = await dispatch(router, "GET", "/api/keys", { headers: h });
+  const listRes = await handler(makeReq("GET", "/api/keys", { headers: h }));
   const listBody = await listRes.json();
   assertEquals(listBody.keys.length, 3);
+
+  kv.close();
+});
+
+// ─── Proxy: 401 unauthorized (proxy key required) ───
+
+Deno.test("integration: proxy 401 when proxy key exists but token missing", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+
+  await handler(
+    makeReq("POST", "/api/proxy-keys", {
+      headers: { "X-Admin-Token": token },
+      body: { name: "gate" },
+    }),
+  );
+
+  const res = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+  assertEquals(res.status, 401);
+
+  const resInvalid = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      headers: { Authorization: "Bearer invalid-token" },
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+  assertEquals(resInvalid.status, 401);
+
+  kv.close();
+});
+
+// ─── Proxy: 400 bad request body ───
+
+Deno.test("integration: proxy 400 when messages missing or empty", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+
+  const res1 = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { not_messages: true },
+    }),
+  );
+  assertEquals(res1.status, 400);
+
+  const res2 = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [] },
+    }),
+  );
+  assertEquals(res2.status, 400);
+
+  kv.close();
+});
+
+// ─── Proxy: 500 no API keys ───
+
+Deno.test("integration: proxy 500 when no API keys available", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+
+  const res = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+  assertEquals(res.status, 500);
+  const body = await res.json();
+  assertEquals(body.error, "没有可用的 API 密钥");
+
+  kv.close();
+});
+
+// ─── Proxy: 429 all keys on cooldown ───
+
+Deno.test("integration: proxy 429 when all API keys on cooldown", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+
+  const addRes = await handler(
+    makeReq("POST", "/api/keys", {
+      headers: { "X-Admin-Token": token },
+      body: { key: "sk-cooldown-test" },
+    }),
+  );
+  const { id } = await addRes.json();
+
+  state.keyCooldownUntil.set(id, Date.now() + 600_000);
+
+  const res = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+  assertEquals(res.status, 429);
+
+  kv.close();
+});
+
+// ─── Proxy: 503 no models in pool ───
+
+Deno.test("integration: proxy 503 when model pool is empty", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+
+  await handler(
+    makeReq("POST", "/api/keys", {
+      headers: { "X-Admin-Token": token },
+      body: { key: "sk-model-test" },
+    }),
+  );
+
+  state.cachedModelPool = [];
+
+  const res = await handler(
+    makeReq("POST", "/v1/chat/completions", {
+      body: { messages: [{ role: "user", content: "hi" }] },
+    }),
+  );
+  assertEquals(res.status, 503);
+  const body = await res.json();
+  assertEquals(body.error, "没有可用的模型");
+
+  kv.close();
+});
+
+// ─── Models: GET + PUT ───
+
+Deno.test("integration: models GET and PUT", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+  const h = { "X-Admin-Token": token };
+
+  const getRes = await handler(makeReq("GET", "/api/models", { headers: h }));
+  assertEquals(getRes.status, 200);
+  const getBody = await getRes.json();
+  assertEquals(Array.isArray(getBody.models), true);
+  assertEquals(getBody.models.length > 0, true);
+
+  const putRes = await handler(
+    makeReq("PUT", "/api/models", {
+      headers: h,
+      body: { models: ["test-model-a", "test-model-b"] },
+    }),
+  );
+  assertEquals(putRes.status, 200);
+  const putBody = await putRes.json();
+  assertEquals(putBody.success, true);
+  assertEquals(putBody.models, ["test-model-a", "test-model-b"]);
+
+  const getRes2 = await handler(
+    makeReq("GET", "/api/models", { headers: h }),
+  );
+  const getBody2 = await getRes2.json();
+  assertEquals(getBody2.models, ["test-model-a", "test-model-b"]);
+
+  const badPut = await handler(
+    makeReq("PUT", "/api/models", {
+      headers: h,
+      body: { models: [] },
+    }),
+  );
+  assertEquals(badPut.status, 400);
+
+  kv.close();
+});
+
+// ─── CORS: OPTIONS preflight ───
+
+Deno.test("integration: OPTIONS returns correct CORS headers", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+
+  const proxyOpts = await handler(makeReq("OPTIONS", "/v1/chat/completions"));
+  assertEquals(proxyOpts.status, 204);
+  assertEquals(
+    proxyOpts.headers.get("Access-Control-Allow-Origin"),
+    CORS_HEADERS["Access-Control-Allow-Origin"],
+  );
+  assertEquals(
+    proxyOpts.headers.get("Access-Control-Allow-Methods"),
+    CORS_HEADERS["Access-Control-Allow-Methods"],
+  );
+
+  const adminOpts = await handler(makeReq("OPTIONS", "/api/keys"));
+  assertEquals(adminOpts.status, 204);
+  assertEquals(adminOpts.headers.has("Access-Control-Allow-Origin"), false);
+  assertEquals(
+    adminOpts.headers.get("Access-Control-Allow-Methods"),
+    ADMIN_CORS_HEADERS["Access-Control-Allow-Methods"],
+  );
+
+  kv.close();
+});
+
+// ─── Healthz ───
+
+Deno.test("integration: GET /healthz returns 200", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+
+  const res = await handler(makeReq("GET", "/healthz"));
+  assertEquals(res.status, 200);
+  assertEquals(await res.text(), "ok");
+
+  kv.close();
+});
+
+// ─── 404 ───
+
+Deno.test("integration: unknown path returns 404", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+
+  const res = await handler(makeReq("GET", "/nonexistent"));
+  assertEquals(res.status, 404);
 
   kv.close();
 });
