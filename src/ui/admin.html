@@ -41,7 +41,12 @@
     }
     body .tab:hover, body.light .tab:hover { color: #475569; }
     body .tab.active, body.light .tab.active { color: #06b6d4; border-bottom-color: #06b6d4; background: rgba(6, 182, 212, 0.05); }
-    body .tab-content, body.light .tab-content { display: none; padding: 20px; }
+    body .tab-content, body.light .tab-content {
+      display: none;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.28);
+      min-height: 320px;
+    }
     body .tab-content.active, body.light .tab-content.active { display: block; }
     body .stats-row, body.light .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid rgba(6, 182, 212, 0.1); }
     body .stat-item, body.light .stat-item { text-align: center; padding: 10px; background: rgba(6, 182, 212, 0.06); border-radius: 8px; border: 1px solid rgba(6, 182, 212, 0.12); }
@@ -135,6 +140,7 @@
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
     }
     body.dark .tabs { background: rgba(15, 23, 42, 0.5); }
+    body.dark .tab-content { background: rgba(15, 23, 42, 0.35); }
     body.dark .tab:hover { color: #94a3b8; }
     body.dark .stat-item { background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.15); }
     body.dark .form-group label { color: #94a3b8; }
@@ -187,6 +193,14 @@
     }
     .theme-toggle:hover { color: #06b6d4; }
     .theme-toggle svg { width: 20px; height: 20px; }
+
+    @media (max-width: 640px) {
+      body .tab-content,
+      body.light .tab-content,
+      body.dark .tab-content {
+        min-height: 260px;
+      }
+    }
   </style>
 </head>
 <body>
