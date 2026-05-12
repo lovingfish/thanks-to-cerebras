@@ -3,7 +3,7 @@ import {
   createAdminToken,
   deleteAdminToken,
   getAdminPassword,
-  setAdminPassword,
+  setAdminPasswordIfUnset,
   verifyAdminPassword,
   verifyAdminToken,
 } from "../auth.ts";
@@ -11,14 +11,16 @@ import { loginLimiter } from "../rate-limit.ts";
 import { metrics } from "../metrics.ts";
 import type { Router } from "../router.ts";
 
-function getClientIp(req: Request): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
+/**
+ * Uses one fail-closed auth bucket because forwarded IP headers are not trusted here.
+ */
+function getRateLimitKey(_req: Request): string {
+  return "admin-auth";
 }
 
+/**
+ * Reports whether setup is complete and the supplied admin token is valid.
+ */
 async function getAuthStatus(req: Request): Promise<Response> {
   const hasPassword = (await getAdminPassword()) !== null;
   const token = req.headers.get("X-Admin-Token");
@@ -26,9 +28,12 @@ async function getAuthStatus(req: Request): Promise<Response> {
   return jsonResponse({ hasPassword, isLoggedIn });
 }
 
+/**
+ * Handles first-run password setup while preserving the single-admin invariant.
+ */
 async function setupAuth(req: Request): Promise<Response> {
-  const ip = getClientIp(req);
-  const limit = loginLimiter.check(ip);
+  const key = getRateLimitKey(req);
+  const limit = loginLimiter.check(key);
   if (!limit.allowed) {
     metrics.inc("rate_limit_hits_total", "setup");
     const retryAfter = Math.ceil(limit.retryAfterMs / 1000);
@@ -54,7 +59,13 @@ async function setupAuth(req: Request): Promise<Response> {
         instance: "/api/auth/setup",
       });
     }
-    await setAdminPassword(password);
+    const created = await setAdminPasswordIfUnset(password);
+    if (!created) {
+      return problemResponse("密码已设置", {
+        status: 400,
+        instance: "/api/auth/setup",
+      });
+    }
     const token = await createAdminToken();
     return jsonResponse({ success: true, token });
   } catch (error) {
@@ -66,9 +77,12 @@ async function setupAuth(req: Request): Promise<Response> {
   }
 }
 
+/**
+ * Handles admin login under the same non-spoofable bucket as setup.
+ */
 async function loginAuth(req: Request): Promise<Response> {
-  const ip = getClientIp(req);
-  const limit = loginLimiter.check(ip);
+  const key = getRateLimitKey(req);
+  const limit = loginLimiter.check(key);
   if (!limit.allowed) {
     metrics.inc("rate_limit_hits_total", "login");
     const retryAfter = Math.ceil(limit.retryAfterMs / 1000);
@@ -99,6 +113,9 @@ async function loginAuth(req: Request): Promise<Response> {
   }
 }
 
+/**
+ * Logs out the current admin token; missing tokens are treated as already logged out.
+ */
 async function logoutAuth(req: Request): Promise<Response> {
   const token = req.headers.get("X-Admin-Token");
   if (token) {
@@ -107,6 +124,9 @@ async function logoutAuth(req: Request): Promise<Response> {
   return jsonResponse({ success: true });
 }
 
+/**
+ * Registers the admin authentication routes on the shared router.
+ */
 export function register(router: Router): void {
   router
     .get("/api/auth/status", getAuthStatus)

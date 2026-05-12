@@ -10,6 +10,9 @@ import { normalizeModelPool, rebuildModelPoolCache } from "../models.ts";
 import { state } from "../state.ts";
 import { kvUpdateConfig } from "./config.ts";
 
+/**
+ * Returns whether a model catalog is within the configured cache TTL.
+ */
 export function isModelCatalogFresh(
   catalog: ModelCatalog,
   now: number,
@@ -19,11 +22,17 @@ export function isModelCatalogFresh(
   );
 }
 
+/**
+ * Reads the cached model catalog from KV without refreshing upstream data.
+ */
 export async function kvGetModelCatalog(): Promise<ModelCatalog | null> {
   const entry = await state.kv.get<ModelCatalog>(MODEL_CATALOG_KEY);
   return entry.value ?? null;
 }
 
+/**
+ * Fetches and caches the upstream model catalog only after strict payload validation.
+ */
 export async function refreshModelCatalog(): Promise<ModelCatalog> {
   if (state.modelCatalogFetchInFlight) {
     return await state.modelCatalogFetchInFlight;
@@ -45,19 +54,35 @@ export async function refreshModelCatalog(): Promise<ModelCatalog> {
       throw new Error(`模型目录拉取失败：HTTP ${response.status}${suffix}`);
     }
 
-    const data = await response.json().catch(() => ({}));
-    const rawModels = (data as { data?: unknown })?.data;
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error(
+        `模型目录响应不是有效 JSON：${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
-    const ids = Array.isArray(rawModels)
-      ? rawModels
-        .map((m) => {
-          if (!m || typeof m !== "object") return "";
-          if (!("id" in m)) return "";
-          const id = (m as { id?: unknown }).id;
-          return typeof id === "string" ? id.trim() : "";
-        })
-        .filter((id) => id.length > 0)
-      : [];
+    // Guard against valid JSON primitives (null, scalar) before property access.
+    if (typeof data !== "object" || data === null) {
+      throw new Error("模型目录响应格式错误");
+    }
+
+    const rawModels = (data as { data?: unknown }).data;
+    if (!Array.isArray(rawModels)) {
+      throw new Error("模型目录响应缺少 data 数组");
+    }
+
+    const ids = rawModels
+      .map((m) => {
+        if (!m || typeof m !== "object") return "";
+        if (!("id" in m)) return "";
+        const id = (m as { id?: unknown }).id;
+        return typeof id === "string" ? id.trim() : "";
+      })
+      .filter((id) => id.length > 0);
 
     const seen = new Set<string>();
     const models: string[] = [];
@@ -90,6 +115,9 @@ export async function refreshModelCatalog(): Promise<ModelCatalog> {
   return await promise;
 }
 
+/**
+ * Removes an unavailable model from the configured pool and resets rotation.
+ */
 export async function removeModelFromPool(
   model: string,
   reason: string,
