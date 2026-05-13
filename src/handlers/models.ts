@@ -13,38 +13,42 @@ import type { Router } from "../router.ts";
 async function getModelCatalog(): Promise<Response> {
   try {
     const { catalog, stale, lastError } = await getCatalogData();
+    if (lastError) console.error("[MODELS] stale catalog error:", lastError);
     return jsonResponse({
       source: catalog.source,
       fetchedAt: catalog.fetchedAt,
       ttlMs: MODEL_CATALOG_TTL_MS,
       stale,
-      ...(lastError ? { lastError } : {}),
+      ...(lastError ? { lastError: "获取模型目录时发生错误" } : {}),
       models: catalog.models,
     });
   } catch (error) {
-    return problemResponse(
-      error instanceof Error ? error.message : "无法获取模型目录",
-      { status: 502, instance: "/api/models/catalog" },
-    );
+    console.error("[MODELS] catalog fetch error:", error);
+    return problemResponse("无法获取模型目录", {
+      status: 502,
+      instance: "/api/models/catalog",
+    });
   }
 }
 
 async function refreshCatalog(): Promise<Response> {
   try {
     const { catalog, stale, lastError } = await forceRefreshCatalog();
+    if (lastError) console.error("[MODELS] stale refresh error:", lastError);
     return jsonResponse({
       source: catalog.source,
       fetchedAt: catalog.fetchedAt,
       ttlMs: MODEL_CATALOG_TTL_MS,
       stale,
-      ...(lastError ? { lastError } : {}),
+      ...(lastError ? { lastError: "刷新模型目录时发生错误" } : {}),
       models: catalog.models,
     });
   } catch (error) {
-    return problemResponse(
-      error instanceof Error ? error.message : "目录刷新失败",
-      { status: 502, instance: "/api/models/catalog/refresh" },
-    );
+    console.error("[MODELS] catalog refresh error:", error);
+    return problemResponse("目录刷新失败", {
+      status: 502,
+      instance: "/api/models/catalog/refresh",
+    });
   }
 }
 
