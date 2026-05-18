@@ -7,24 +7,37 @@ import {
   kvGetAllProxyKeys,
   kvGetProxyKeyById,
 } from "../kv/proxy-keys.ts";
+import { kvGetConfig } from "../kv/config.ts";
 import type { Router } from "../router.ts";
 
 async function listProxyKeys(): Promise<Response> {
-  const keys = await kvGetAllProxyKeys();
-  keys.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
-  const masked = keys.map((k) => ({
-    id: k.id,
-    key: maskKey(k.key),
-    name: k.name,
-    useCount: k.useCount,
-    lastUsed: k.lastUsed,
-    createdAt: k.createdAt,
-  }));
-  return adminJsonResponse({
-    keys: masked,
-    maxKeys: MAX_PROXY_KEYS,
-    authEnabled: keys.length > 0,
-  });
+  try {
+    const [keys, config] = await Promise.all([
+      kvGetAllProxyKeys(),
+      kvGetConfig(),
+    ]);
+    keys.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    const masked = keys.map((k) => ({
+      id: k.id,
+      key: maskKey(k.key),
+      name: k.name,
+      useCount: k.useCount,
+      lastUsed: k.lastUsed,
+      createdAt: k.createdAt,
+    }));
+    return adminJsonResponse({
+      keys: masked,
+      maxKeys: MAX_PROXY_KEYS,
+      authEnabled: true,
+      proxyPublicAccess: config.proxyPublicAccess,
+    });
+  } catch (error) {
+    console.error("[PROXY-KEYS] list keys error:", error);
+    return adminProblemResponse("获取代理密钥列表失败", {
+      status: 500,
+      instance: "/api/proxy-keys",
+    });
+  }
 }
 
 async function createProxyKey(req: Request): Promise<Response> {
