@@ -982,32 +982,7 @@ Deno.test("integration: proxy explicit public mode allows requests without keys"
   kv.close();
 });
 
-Deno.test("integration: public access cache refreshes after config revision", async () => {
-  const kv = await setupKv();
-  const handler = buildHandler();
-  const token = await enableProxyPublicAccess(handler);
-
-  state.cachedConfig!.proxyPublicAccess = true;
-  await handler(
-    makeReq("PATCH", "/api/config", {
-      headers: { "X-Admin-Token": token },
-      body: { proxyPublicAccess: false },
-    }),
-  );
-  state.cachedConfig!.proxyPublicAccess = true;
-  state.proxyKeyCacheLastLoadedAt = 0;
-  state.authCacheRevision = 0;
-  state.authCacheRevisionLastCheckedAt = 0;
-
-  const auth = await isProxyAuthorized(
-    makeReq("POST", "/v1/chat/completions"),
-  );
-  assertEquals(auth.authorized, false);
-
-  kv.close();
-});
-
-Deno.test("integration: auth revision refresh retries after cache failure", async () => {
+Deno.test("integration: public access refreshes and retries after cache failures", async () => {
   const kv = await setupKv();
   const handler = buildHandler();
   const token = await enableProxyPublicAccess(handler);
