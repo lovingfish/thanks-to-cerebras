@@ -125,6 +125,19 @@ async function refreshProxyKeyCache(): Promise<Map<string, ProxyAuthKey>> {
 }
 
 async function refreshAuthCacheIfChanged(): Promise<void> {
+  if (state.authCacheRevisionRefreshInFlight) {
+    return await state.authCacheRevisionRefreshInFlight;
+  }
+  const refresh = refreshAuthCacheRevision();
+  state.authCacheRevisionRefreshInFlight = refresh;
+  try {
+    await refresh;
+  } finally {
+    state.authCacheRevisionRefreshInFlight = null;
+  }
+}
+
+async function refreshAuthCacheRevision(): Promise<void> {
   const now = Date.now();
   if (
     now - state.authCacheRevisionLastCheckedAt <
@@ -133,11 +146,17 @@ async function refreshAuthCacheIfChanged(): Promise<void> {
     return;
   }
   const revision = await getAuthCacheRevision();
-  state.authCacheRevisionLastCheckedAt = now;
-  if (revision === state.authCacheRevision) return;
-  state.cachedConfig = await kvGetConfig();
-  await refreshProxyKeyCache();
+  if (revision === state.authCacheRevision) {
+    state.authCacheRevisionLastCheckedAt = now;
+    return;
+  }
+  const [config] = await Promise.all([
+    kvGetConfig(),
+    refreshProxyKeyCache(),
+  ]);
+  state.cachedConfig = config;
   state.authCacheRevision = revision;
+  state.authCacheRevisionLastCheckedAt = Date.now();
 }
 
 function shouldRefreshProxyKeyCache(): boolean {
