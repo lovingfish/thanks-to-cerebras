@@ -458,6 +458,34 @@ Deno.test("integration: proxy key add → list → export → delete", async () 
   kv.close();
 });
 
+Deno.test("integration: proxy key list errors are structured", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  const token = await setupAuth(handler);
+  const originalList = state.kv.list;
+  state.kv.list = (() => {
+    throw new Error("database password leaked");
+  }) as typeof state.kv.list;
+
+  try {
+    const res = await handler(
+      makeReq("GET", "/api/proxy-keys", {
+        headers: { "X-Admin-Token": token },
+      }),
+    );
+    const body = await res.json();
+    assertEquals(res.status, 500);
+    assertEquals(body.detail, "获取代理密钥列表失败");
+    assertEquals(
+      JSON.stringify(body).includes("database password leaked"),
+      false,
+    );
+  } finally {
+    state.kv.list = originalList;
+    kv.close();
+  }
+});
+
 Deno.test("integration: proxy key creation errors do not expose stack traces", async () => {
   const kv = await setupKv();
   const handler = buildHandler();
