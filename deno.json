@@ -18,6 +18,7 @@
     "check": "deno check main.ts src",
     "lint": "deno lint main.ts src",
     "fmt:check": "deno fmt --check main.ts src",
+    "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit",
     "docstring:coverage": "deno run --allow-read scripts/docstring-coverage.mjs --threshold 80"
   },
   "imports": {

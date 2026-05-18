@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+deno task fmt:check
+deno task lint
+deno task check
