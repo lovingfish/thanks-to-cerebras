@@ -58,7 +58,10 @@ yarn-error.log*
 dist/
 build/
 out/
+coverage/
 
+# Dependency directories
+node_modules/
 
 # ===================================================================
 # DENO CACHE & LOCK

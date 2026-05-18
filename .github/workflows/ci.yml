@@ -31,7 +31,30 @@ jobs:
         run: deno task tech-debt:check
       - name: duplicate code check
         run: deno task duplicate-code:check
+      - name: unused dependency check
+        run: deno task unused-deps:check
       - name: deno check
         run: deno task check
       - name: deno test
         run: deno task test:unit
+      - name: dast check
+        env:
+          KEY_ENCRYPTION_SECRET: ci-dast-key-encryption-secret
+          SETUP_TOKEN: ci-dast-setup-token
+          KV_PATH: ${{ runner.temp }}/dast-kv
+          PORT: "8339"
+        run: |
+          deno task start &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8339/healthz >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Server did not become ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          deno task dast:check

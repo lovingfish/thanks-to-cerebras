@@ -18,12 +18,6 @@
   ],
   "commitMessageTopic": "{{depName}}",
   "rangeStrategy": "bump",
-  "enabledManagers": [
-    "deno",
-    "docker-compose",
-    "dockerfile",
-    "github-actions"
-  ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
