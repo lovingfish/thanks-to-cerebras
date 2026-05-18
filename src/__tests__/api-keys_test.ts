@@ -9,7 +9,7 @@
 import { assertEquals } from "@std/assert";
 import { state } from "../state.ts";
 import { getNextApiKeyFast, rebuildActiveKeyIds } from "../api-keys.ts";
-import { createMockApiKey } from "./test_utils.ts";
+import { createMockApiKey } from "./test-utils.ts";
 
 function resetState() {
   state.cachedKeysById = new Map();

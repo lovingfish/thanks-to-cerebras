@@ -3,4 +3,5 @@ set -eu
 
 deno task fmt:check
 deno task lint
+deno task naming:check
 deno task check

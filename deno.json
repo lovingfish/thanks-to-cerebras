@@ -16,7 +16,9 @@
     "test:unit": "deno test --allow-net --allow-env --allow-read --allow-write src/__tests__/",
     "test:coverage": "deno test --allow-net --allow-env --allow-read --allow-write --coverage=coverage",
     "check": "deno check main.ts src",
-    "lint": "deno lint main.ts src",
+    "lint": "deno lint --rules-include=camelcase main.ts src",
+    "naming:check": "deno run --allow-read scripts/naming-check.ts",
+    "complexity:check": "deno run --allow-read scripts/complexity-check.ts --max 22",
     "fmt:check": "deno fmt --check main.ts src",
     "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit",
     "docstring:coverage": "deno run --allow-read scripts/docstring-coverage.mjs --threshold 80"

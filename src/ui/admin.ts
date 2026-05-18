@@ -1,1 +1,1 @@
-export { renderAdminPage } from "./admin_page.ts";
+export { renderAdminPage } from "./admin-page.ts";

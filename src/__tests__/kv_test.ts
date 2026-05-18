@@ -14,7 +14,7 @@ import {
   MIN_KV_FLUSH_INTERVAL_MS,
 } from "../constants.ts";
 import { normalizeKvFlushIntervalMs } from "../utils.ts";
-import { createMockConfig } from "./test_utils.ts";
+import { createMockConfig } from "./test-utils.ts";
 
 Deno.test("resolveKvFlushIntervalMs - returns default for null config", () => {
   const result = resolveKvFlushIntervalMs(null);

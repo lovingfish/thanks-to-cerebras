@@ -8,7 +8,7 @@
 import { assertEquals } from "@std/assert";
 import { state } from "../state.ts";
 import { recordProxyKeyUsage } from "../auth.ts";
-import { createMockProxyKey } from "./test_utils.ts";
+import { createMockProxyKey } from "./test-utils.ts";
 
 function resetState() {
   state.cachedProxyKeys = new Map();
