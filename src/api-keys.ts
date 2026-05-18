@@ -109,11 +109,11 @@ export async function markKeyInvalid(id: string): Promise<void> {
   rebuildActiveKeyIds();
   try {
     const key = [...API_KEY_PREFIX, id];
-    const entry = await state.kv.get(key);
+    const [entry, revisionEntry] = await Promise.all([
+      state.kv.get(key),
+      state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
+    ]);
     if (!entry.value) return;
-    const revisionEntry = await state.kv.get<number>(
-      API_KEY_CACHE_REVISION_KEY,
-    );
     const revision = getNextRevisionValue(revisionEntry);
     const result = await state.kv.atomic()
       .check(entry)

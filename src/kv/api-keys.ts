@@ -159,8 +159,10 @@ export async function kvAddKey(
     createdAt,
   };
 
-  const revisionEntry = await state.kv.get<number>(API_KEY_CACHE_REVISION_KEY);
-  const idEntry = await state.kv.get([...API_KEY_PREFIX, id]);
+  const [revisionEntry, idEntry] = await Promise.all([
+    state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
+    state.kv.get([...API_KEY_PREFIX, id]),
+  ]);
   if (idEntry.value !== null) {
     return { success: false, error: "密钥保存冲突，请重试" };
   }

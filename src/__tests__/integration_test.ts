@@ -1011,21 +1011,24 @@ Deno.test("integration: public access refreshes and retries after cache failures
     return originalList(selector, options);
   }) as typeof state.kv.list;
 
-  await assertRejects(
-    () => isProxyAuthorized(makeReq("POST", "/v1/chat/completions")),
-    Error,
-    "transient proxy key list failure",
-  );
-  assertEquals(state.authCacheRevision, 0);
-  assertEquals(state.authCacheRevisionLastCheckedAt, 0);
-  state.kv.list = originalList;
+  try {
+    await assertRejects(
+      () => isProxyAuthorized(makeReq("POST", "/v1/chat/completions")),
+      Error,
+      "transient proxy key list failure",
+    );
+    assertEquals(state.authCacheRevision, 0);
+    assertEquals(state.authCacheRevisionLastCheckedAt, 0);
+    state.kv.list = originalList;
 
-  const auth = await isProxyAuthorized(
-    makeReq("POST", "/v1/chat/completions"),
-  );
-  assertEquals(auth.authorized, false);
-
-  kv.close();
+    const auth = await isProxyAuthorized(
+      makeReq("POST", "/v1/chat/completions"),
+    );
+    assertEquals(auth.authorized, false);
+  } finally {
+    state.kv.list = originalList;
+    kv.close();
+  }
 });
 
 Deno.test("integration: proxy invalid tokens do not repeatedly reload empty cache", async () => {

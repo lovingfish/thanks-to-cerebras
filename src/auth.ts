@@ -150,8 +150,11 @@ async function refreshAuthCacheRevision(): Promise<void> {
     state.authCacheRevisionLastCheckedAt = now;
     return;
   }
-  state.cachedConfig = await kvGetConfig();
-  await refreshProxyKeyCache();
+  const [config] = await Promise.all([
+    kvGetConfig(),
+    refreshProxyKeyCache(),
+  ]);
+  state.cachedConfig = config;
   state.authCacheRevision = revision;
   state.authCacheRevisionLastCheckedAt = Date.now();
 }
