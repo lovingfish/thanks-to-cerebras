@@ -32,16 +32,18 @@ Deno.test("health: GET /readyz returns ready when KV and secrets are configured"
   const kv = await setupKv();
   const handler = createHandler(createRouter());
 
-  const res = await handler(makeReq("/readyz"));
-  assertEquals(res.status, 200);
-  const body = await res.json();
-  assertEquals(body.ready, true);
-  assertEquals(body.checks.keyEncryptionSecret, true);
-  assertEquals(body.checks.kv, true);
-  assertEquals(body.checks.config, true);
-
-  setLogSinkForTests(null);
-  kv.close();
+  try {
+    const res = await handler(makeReq("/readyz"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.ready, true);
+    assertEquals(body.checks.keyEncryptionSecret, true);
+    assertEquals(body.checks.kv, true);
+    assertEquals(body.checks.config, true);
+  } finally {
+    setLogSinkForTests(null);
+    kv.close();
+  }
 });
 
 Deno.test("health: GET /readyz returns 503 when KV is unavailable", async () => {

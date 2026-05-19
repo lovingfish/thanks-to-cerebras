@@ -61,7 +61,7 @@ async function addActiveApiKey(key: string): Promise<void> {
 
 function installUpstreamResponse(response: () => Response): () => void {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (input: RequestInfo | URL) => {
+  globalThis.fetch = (input: RequestInfo | URL, _init?: RequestInit) => {
     assertEquals(String(input), CEREBRAS_API_URL);
     return Promise.resolve(response());
   };
@@ -112,22 +112,27 @@ Deno.test("proxy circuit: ignores key errors", async () => {
   const kv = await setupKv();
   const handler = createHandler(createRouter());
   state.cachedConfig = { ...state.cachedConfig!, proxyPublicAccess: true };
-  await addActiveApiKey("sk-upstream-test");
-  const restoreFetch = installUpstreamResponse(() =>
-    new Response(JSON.stringify({ error: "bad key" }), {
+  for (let i = 0; i < UPSTREAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
+    await addActiveApiKey(`sk-upstream-test-${i}`);
+  }
+  let fetchCount = 0;
+  const restoreFetch = installUpstreamResponse(() => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({ error: "bad key" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
-    })
-  );
+    });
+  });
 
   try {
     for (let i = 0; i < UPSTREAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
       const res = await handler(
         makeReq({ messages: [{ role: "user", content: "hi" }] }),
       );
-      assertEquals(res.status, i === 0 ? 401 : 500);
+      assertEquals(res.status, 401);
       await res.body?.cancel();
     }
+    assertEquals(fetchCount, UPSTREAM_CIRCUIT_FAILURE_THRESHOLD);
     assertEquals(state.upstreamCircuitOpenedUntil, 0);
   } finally {
     setLogSinkForTests(null);

@@ -43,6 +43,7 @@ export function createHandler(
     const requestId = resolveRequestId(req);
     const url = new URL(req.url);
     const path = url.pathname;
+    const context = { requestId };
     let response: Response;
 
     if (req.method === "OPTIONS") {
@@ -65,7 +66,7 @@ export function createHandler(
 
     const matched = router.match(req.method, req.url);
     if (matched) {
-      response = await matched.handler(req, matched.params);
+      response = await matched.handler(req, matched.params, context);
       return finalizeResponse(req, response, requestId, startedAt);
     }
 

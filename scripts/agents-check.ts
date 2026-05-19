@@ -45,7 +45,7 @@ const failures = REQUIRED_SNIPPETS.filter((snippet) =>
   !content.includes(snippet)
 );
 
-if (new RegExp(DISALLOWED_MARKERS.join("|")).test(content)) {
+if (new RegExp(DISALLOWED_MARKERS.join("|"), "i").test(content)) {
   failures.push("AGENTS.md must not contain unresolved debt markers.");
 }
 

@@ -47,6 +47,8 @@ export type ProxyResult =
     headers?: Headers;
   };
 
+type ProxyLogContext = Record<string, string | undefined>;
+
 function applyStandardHeaders(headers: Headers): void {
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     headers.set(key, value);
@@ -125,6 +127,7 @@ async function discardBoundedUpstreamErrorBody(
 
 export async function forwardChatCompletion(
   requestBody: Record<string, unknown>,
+  context: ProxyLogContext = {},
 ): Promise<ProxyResult> {
   await refreshApiKeyCacheIfChanged();
   let apiKeyData = getNextApiKeyFast(Date.now());
@@ -201,7 +204,7 @@ export async function forwardChatCompletion(
         return { kind: "error", message: "上游请求超时", status: 504 };
       }
       recordUpstreamFailure();
-      logger.error("proxy_upstream_fetch_failed", {}, error);
+      logger.error("proxy_upstream_fetch_failed", context, error);
       metrics.inc("proxy_requests_total", "upstream_error");
       metrics.inc("upstream_responses_total", "network_error");
       return { kind: "error", message: "上游请求失败", status: 502 };
