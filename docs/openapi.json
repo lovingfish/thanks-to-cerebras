@@ -632,6 +632,25 @@
           "401": { "$ref": "#/components/responses/Problem" }
         }
       }
+    },
+    "/api/diagnostics": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getDiagnostics",
+        "summary": "Detailed readiness diagnostics (admin-only)",
+        "security": [{ "AdminToken": [] }],
+        "responses": {
+          "200": {
+            "description": "Readiness diagnostics with individual checks",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Diagnostics" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" }
+        }
+      }
     }
   },
   "components": {
@@ -784,6 +803,14 @@
         "additionalProperties": false
       },
       "Readiness": {
+        "type": "object",
+        "required": ["ready"],
+        "properties": {
+          "ready": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "Diagnostics": {
         "type": "object",
         "required": ["ready", "checks"],
         "properties": {

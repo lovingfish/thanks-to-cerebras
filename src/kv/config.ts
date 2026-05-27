@@ -9,6 +9,7 @@ import {
 import { normalizeKvFlushIntervalMs } from "../utils.ts";
 import { normalizeModelPool } from "../models.ts";
 import { state } from "../state.ts";
+import { waitForKvAtomicRetry } from "./atomic-retry.ts";
 import { getNextRevisionValue, recordAuthCacheRevision } from "./revisions.ts";
 
 export function resolveKvFlushIntervalMs(config: ProxyConfig | null): number {
@@ -129,9 +130,7 @@ export async function kvEnsureConfigEntry(): Promise<
       .set(CONFIG_KEY, config)
       .commit();
     if (!result.ok) {
-      const baseMs = Math.min(10 * 2 ** attempt, 500);
-      const jitter = Math.random() * baseMs;
-      await new Promise((r) => setTimeout(r, baseMs + jitter));
+      await waitForKvAtomicRetry(attempt);
     }
   }
   throw new Error("KV 配置迁移失败：达到最大重试次数");
@@ -173,9 +172,7 @@ export async function kvUpdateConfig(
       if (nextRevision !== null) recordAuthCacheRevision(nextRevision);
       return validatedConfig;
     }
-    const baseMs = Math.min(10 * 2 ** attempt, 500);
-    const jitter = Math.random() * baseMs;
-    await new Promise((r) => setTimeout(r, baseMs + jitter));
+    await waitForKvAtomicRetry(attempt);
   }
   throw new Error("配置更新失败：达到最大重试次数");
 }

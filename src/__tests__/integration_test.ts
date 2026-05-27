@@ -1434,6 +1434,37 @@ Deno.test("integration: upstream model-not-found classification is bounded", asy
   }
 });
 
+Deno.test("integration: non-model-not-found 404 returns sanitized error without upstream body", async () => {
+  const kv = await setupKv();
+  const handler = buildHandler();
+  await enableProxyPublicAccess(handler);
+  await addActiveApiKey("sk-upstream-test");
+  const secretBody = JSON.stringify({
+    error: { message: "some internal upstream detail" },
+  });
+  const restoreFetch = installUpstreamResponse(
+    new Response(secretBody, {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+
+  try {
+    const res = await handler(
+      makeReq("POST", "/v1/chat/completions", {
+        body: { messages: [{ role: "user", content: "hi" }] },
+      }),
+    );
+    const text = await res.text();
+    assertEquals(res.status, 404);
+    assertEquals(text.includes("Upstream request failed"), true);
+    assertEquals(text.includes("some internal upstream detail"), false);
+  } finally {
+    restoreFetch();
+    kv.close();
+  }
+});
+
 Deno.test("integration: successful upstream stream is still passed through", async () => {
   const kv = await setupKv();
   const handler = buildHandler();

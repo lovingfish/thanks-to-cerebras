@@ -4,7 +4,11 @@ import {
   type PersistedApiKey,
   toPersistedApiKey,
 } from "../api-key-record.ts";
-import { API_KEY_CACHE_REVISION_KEY, API_KEY_PREFIX } from "../constants.ts";
+import {
+  API_KEY_CACHE_REVISION_KEY,
+  API_KEY_PREFIX,
+  KV_ATOMIC_MAX_RETRIES,
+} from "../constants.ts";
 import { generateId } from "../utils.ts";
 import { sha256Hex } from "../crypto.ts";
 import { rebuildActiveKeyIds } from "../api-keys.ts";
@@ -15,8 +19,7 @@ import {
   recordApiKeyCacheRevision,
 } from "./revisions.ts";
 import { valueIndexKey } from "./api-keys-index.ts";
-
-type LegacyApiKey = Omit<ApiKey, "encryptedKey"> & { key: string };
+import { waitForKvAtomicRetry } from "./atomic-retry.ts";
 
 async function hydrateApiKey(value: unknown): Promise<ApiKey> {
   const persisted = assertCurrentApiKey(value);
@@ -82,50 +85,6 @@ export async function kvGetApiKeyById(id: string): Promise<ApiKey | null> {
   state.cachedKeysById.set(id, hydrated);
   rebuildActiveKeyIds();
   return hydrated;
-}
-
-export async function kvMigrateApiKeysToEncrypted(): Promise<number> {
-  let migrated = 0;
-  const iter = state.kv.list({ prefix: API_KEY_PREFIX });
-  for await (const entry of iter) {
-    const value = entry.value as Partial<LegacyApiKey> & Partial<ApiKey>;
-    if (typeof value.encryptedKey === "string") continue;
-    if (typeof value.key !== "string") {
-      throw new Error("API key 迁移失败：旧记录缺少明文 key");
-    }
-
-    const encryptedKey = await encryptApiKey(value.key);
-    const migratedValue = {
-      id: value.id,
-      useCount: value.useCount,
-      lastUsed: value.lastUsed,
-      status: value.status,
-      createdAt: value.createdAt,
-      encryptedKey,
-    };
-    if (
-      typeof migratedValue.id !== "string" ||
-      typeof migratedValue.useCount !== "number" ||
-      typeof migratedValue.status !== "string" ||
-      typeof migratedValue.createdAt !== "number"
-    ) {
-      throw new Error("API key 迁移失败：旧记录结构不完整");
-    }
-    const result = await state.kv.atomic()
-      .check(entry)
-      .set(entry.key, migratedValue)
-      .commit();
-    if (!result.ok) throw new Error("API key 迁移失败：KV 写入冲突");
-    state.cachedKeysById.delete(migratedValue.id);
-    migrated++;
-  }
-  if (migrated > 0) {
-    state.cachedKeysById = new Map(
-      (await kvGetAllKeys()).map((key) => [key.id, key]),
-    );
-    rebuildActiveKeyIds();
-  }
-  return migrated;
 }
 
 let lastApiKeyCreatedAtMs = 0;
@@ -265,24 +224,65 @@ export async function kvDeleteKey(
 export async function kvUpdateKey(
   id: string,
   updates: Partial<ApiKey>,
-): Promise<void> {
-  const key = [...API_KEY_PREFIX, id];
-  const existing = state.cachedKeysById.get(id) ??
-    (await kvGetApiKeyById(id));
-  if (!existing) return;
-  const updated = { ...existing, ...updates };
-  const entry = await state.kv.get<PersistedApiKey>(key);
-  if (!entry.value) return;
-  const revisionEntry = await state.kv.get<number>(API_KEY_CACHE_REVISION_KEY);
-  const revision = getNextRevisionValue(revisionEntry);
-  const result = await state.kv.atomic()
-    .check(entry)
-    .check(revisionEntry)
-    .set(key, toPersistedApiKey(updated))
-    .set(API_KEY_CACHE_REVISION_KEY, revision)
-    .commit();
-  if (!result.ok) throw new Error("密钥更新失败：KV 写入冲突");
-  state.cachedKeysById.set(id, updated);
-  rebuildActiveKeyIds();
-  recordApiKeyCacheRevision(revision);
+): Promise<{ updated: boolean }> {
+  const cached = state.cachedKeysById.get(id);
+  if (!cached && !(await kvGetApiKeyById(id))) {
+    return { updated: false };
+  }
+
+  const kvKey = [...API_KEY_PREFIX, id];
+
+  for (let attempt = 0; attempt < KV_ATOMIC_MAX_RETRIES; attempt++) {
+    const [entry, revisionEntry] = await Promise.all([
+      state.kv.get<PersistedApiKey>(kvKey),
+      state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
+    ]);
+
+    if (!entry.value) {
+      const local = state.cachedKeysById.get(id);
+      if (local) {
+        state.cachedKeysById.delete(id);
+        state.keyCooldownUntil.delete(id);
+        state.dirtyKeyIds.delete(id);
+        rebuildActiveKeyIds();
+      }
+      return { updated: false };
+    }
+
+    const persisted = await hydrateApiKey(entry.value);
+    const local = state.cachedKeysById.get(id);
+    const plaintext = local?.key ?? persisted.key;
+
+    const useCount = updates.useCount ??
+      Math.max(local?.useCount ?? 0, persisted.useCount);
+    const lastUsed = updates.lastUsed ??
+      (Math.max(local?.lastUsed ?? 0, persisted.lastUsed ?? 0) || undefined);
+
+    const updated: ApiKey = {
+      ...persisted,
+      ...updates,
+      key: plaintext,
+      useCount,
+      lastUsed,
+    };
+
+    const revision = getNextRevisionValue(revisionEntry);
+    const result = await state.kv.atomic()
+      .check(entry)
+      .check(revisionEntry)
+      .set(kvKey, toPersistedApiKey(updated))
+      .set(API_KEY_CACHE_REVISION_KEY, revision)
+      .commit();
+
+    if (result.ok) {
+      state.cachedKeysById.set(id, updated);
+      rebuildActiveKeyIds();
+      recordApiKeyCacheRevision(revision);
+      return { updated: true };
+    }
+
+    await waitForKvAtomicRetry(attempt);
+  }
+
+  throw new Error("密钥更新失败：达到最大重试次数");
 }

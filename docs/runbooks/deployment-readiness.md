@@ -32,8 +32,12 @@ should only be sent to a fully initialized instance.
    ```sh
    curl -fsS "$BASE_URL/readyz"
    ```
-3. If `/healthz` passes but `/readyz` returns `503`, inspect the JSON `checks`
-   object:
+3. If `/healthz` passes but `/readyz` returns `503`, use the admin diagnostics
+   endpoint to inspect individual checks:
+   ```sh
+   curl -fsS -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/api/diagnostics"
+   ```
+   The response includes a `checks` object:
    - `keyEncryptionSecret`: set or fix `KEY_ENCRYPTION_SECRET`.
    - `kv`: verify Deno KV availability and local KV path permissions.
    - `config`: verify the KV config shape is compatible.

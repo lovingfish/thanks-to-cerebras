@@ -97,6 +97,12 @@ const probes: Probe[] = [
     path: "/%2e%2e/%2e%2e/etc/passwd",
     expectedStatus: 404,
   },
+  {
+    name: "diagnostics requires auth",
+    path: "/api/diagnostics",
+    expectedStatus: 401,
+    expectCorsOrigin: null,
+  },
 ];
 
 function parseArgs(args: string[]): { baseUrl: string; timeoutMs: number } {

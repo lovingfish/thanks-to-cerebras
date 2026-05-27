@@ -159,7 +159,13 @@ export async function testModelAvailability(
         "upstream_responses_total",
         response.status === 401 ? "401" : "403",
       );
-      await kvUpdateKey(activeKey.id, { status: "invalid" });
+      try {
+        await kvUpdateKey(activeKey.id, { status: "invalid" });
+      } catch (error) {
+        logger.warn("model_test_key_invalidation_failed", {
+          keyId: activeKey.id,
+        }, error);
+      }
     } else {
       metrics.inc("upstream_responses_total", "other");
     }

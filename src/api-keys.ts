@@ -127,7 +127,6 @@ export async function markKeyInvalid(id: string): Promise<void> {
   if (keyEntry.status === "invalid") return;
   keyEntry.status = "invalid";
   state.keyCooldownUntil.delete(id);
-  state.dirtyKeyIds.delete(id);
   rebuildActiveKeyIds();
   try {
     const key = [...API_KEY_PREFIX, id];
@@ -135,7 +134,13 @@ export async function markKeyInvalid(id: string): Promise<void> {
       state.kv.get(key),
       state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
     ]);
-    if (!entry.value) return;
+    if (!entry.value) {
+      state.cachedKeysById.delete(id);
+      state.keyCooldownUntil.delete(id);
+      state.dirtyKeyIds.delete(id);
+      rebuildActiveKeyIds();
+      return;
+    }
     const revision = getNextRevisionValue(revisionEntry);
     const result = await state.kv.atomic()
       .check(entry)
@@ -144,9 +149,9 @@ export async function markKeyInvalid(id: string): Promise<void> {
       .set(API_KEY_CACHE_REVISION_KEY, revision)
       .commit();
     if (!result.ok) throw new Error("API key invalidation write conflict");
+    state.dirtyKeyIds.delete(id);
     recordApiKeyCacheRevision(revision);
   } catch (error) {
-    state.dirtyKeyIds.add(id);
     logger.error("api_key_invalidation_write_failed", { keyId: id }, error);
   }
 }

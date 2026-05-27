@@ -230,8 +230,11 @@ export async function forwardChatCompletion(
 
     recordCircuitOutcome(apiResponse.status);
 
+    let upstreamErrorBodyConsumed = false;
+
     if (apiResponse.status === 404) {
       const bodyRead = await readBoundedBodyText(apiResponse.body);
+      upstreamErrorBodyConsumed = true;
       if (!bodyRead.ok) {
         metrics.inc("upstream_responses_total", "404_body_too_large");
         metrics.inc("proxy_requests_total", "upstream_error");
@@ -252,7 +255,9 @@ export async function forwardChatCompletion(
     }
 
     if (!apiResponse.ok) {
-      await discardBoundedUpstreamErrorBody(apiResponse);
+      if (!upstreamErrorBodyConsumed) {
+        await discardBoundedUpstreamErrorBody(apiResponse);
+      }
       if (apiResponse.status === 429) {
         markKeyCooldownFrom429(apiKeyData.id, apiResponse);
         metrics.inc("upstream_responses_total", "429");
