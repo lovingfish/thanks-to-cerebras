@@ -109,6 +109,76 @@ function failRevisionReadsOnly(error: Error): {
   };
 }
 
+function isApiKeyPrefixSelector(selector: Deno.KvListSelector): boolean {
+  if (!("prefix" in selector)) return false;
+  const prefix = selector.prefix;
+  if (!Array.isArray(prefix) || prefix.length !== API_KEY_PREFIX.length) {
+    return false;
+  }
+  for (let i = 0; i < prefix.length; i++) {
+    if (prefix[i] !== API_KEY_PREFIX[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Same idea as failRevisionReadsOnly but for state.kv.list when called with
+ * the api-keys prefix — i.e. the path kvMergeAllApiKeysIntoCache takes.
+ * Lets us exercise the merge-phase failure path independently from the
+ * revision-read path.
+ */
+function failApiKeyListOnly(error: Error): {
+  restore: () => void;
+  callCount: () => number;
+} {
+  const original = state.kv;
+  let count = 0;
+  const proxy = new Proxy(original, {
+    get(target, prop, _receiver) {
+      if (prop === "list") {
+        return (selector: Deno.KvListSelector, ...rest: unknown[]) => {
+          if (isApiKeyPrefixSelector(selector)) {
+            count++;
+            throw error;
+          }
+          return (target.list as unknown as (
+            ...args: unknown[]
+          ) => unknown).call(target, selector, ...rest);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as Deno.Kv;
+  state.kv = proxy;
+  return {
+    restore: () => {
+      state.kv = original;
+    },
+    callCount: () => count,
+  };
+}
+
+interface CapturedLog {
+  level: string;
+  record: Record<string, unknown>;
+}
+
+/**
+ * Replaces the logger sink with one that collects every emitted line as a
+ * parsed JSON record. Returned `restore()` puts the default sink back.
+ */
+function captureLogs(): { records: CapturedLog[]; restore: () => void } {
+  const records: CapturedLog[] = [];
+  setLogSinkForTests((level, line) => {
+    records.push({ level, record: JSON.parse(line) });
+  });
+  return {
+    records,
+    restore: () => setLogSinkForTests(null),
+  };
+}
+
 Deno.test(
   "refreshApiKeyCacheIfChanged: persistent KV failure does not throw",
   async () => {
@@ -312,3 +382,102 @@ Deno.test("recovery: refresh resumes after transient KV list failure", async () 
     kv.close();
   }
 });
+
+Deno.test(
+  "refreshApiKeyCacheIfChanged: throttle prevents per-request KV merge retries",
+  async () => {
+    const kv = await setupKv();
+    await addActiveApiKey("sk-test-list-throttle");
+
+    // Force the in-memory revision to lag behind KV so refresh proceeds
+    // past getApiKeyCacheRevision() into kvMergeAllApiKeysIntoCache(),
+    // where state.kv.list() is invoked. Without this, refresh would
+    // short-circuit at the revision-equality check and never reach the
+    // merge path we want to exercise.
+    await state.kv.set(API_KEY_CACHE_REVISION_KEY, Date.now());
+    state.apiKeyCacheRevision = 0;
+    state.apiKeyCacheRevisionLastCheckedAt = 0;
+
+    const fail = failApiKeyListOnly(new Error("kv list outage"));
+
+    try {
+      // Burst of refresh attempts. The first one fails inside merge, but
+      // because the throttle clock was bumped before the KV call, every
+      // subsequent attempt within the throttle window must short-circuit
+      // before re-entering merge — preventing the per-request retry storm
+      // that issue #138 describes.
+      for (let i = 0; i < 100; i++) {
+        await refreshApiKeyCacheIfChanged();
+      }
+
+      assertEquals(fail.callCount(), 1);
+    } finally {
+      fail.restore();
+      setLogSinkForTests(null);
+      kv.close();
+    }
+  },
+);
+
+Deno.test(
+  "refreshApiKeyCacheIfChanged: revision read failure logs phase=revision_read",
+  async () => {
+    const kv = await setupKv();
+    await addActiveApiKey("sk-test-log-revision");
+
+    const logs = captureLogs();
+    const fail = failRevisionReadsOnly(new Error("kv outage"));
+
+    try {
+      state.apiKeyCacheRevisionLastCheckedAt = 0;
+      await refreshApiKeyCacheIfChanged();
+
+      const warns = logs.records.filter(
+        (r) =>
+          r.level === "warn" &&
+          r.record.event === "api_key_cache_refresh_failed",
+      );
+      assertEquals(warns.length, 1);
+      assertEquals(warns[0].record.phase, "revision_read");
+      assertEquals(warns[0].record.errorMessage, "kv outage");
+    } finally {
+      fail.restore();
+      logs.restore();
+      kv.close();
+    }
+  },
+);
+
+Deno.test(
+  "refreshApiKeyCacheIfChanged: merge failure logs phase=merge_keys",
+  async () => {
+    const kv = await setupKv();
+    await addActiveApiKey("sk-test-log-merge");
+
+    // Same setup as the merge-throttle test: bump revision so refresh
+    // proceeds into the merge phase.
+    await state.kv.set(API_KEY_CACHE_REVISION_KEY, Date.now());
+    state.apiKeyCacheRevision = 0;
+    state.apiKeyCacheRevisionLastCheckedAt = 0;
+
+    const logs = captureLogs();
+    const fail = failApiKeyListOnly(new Error("kv list outage"));
+
+    try {
+      await refreshApiKeyCacheIfChanged();
+
+      const warns = logs.records.filter(
+        (r) =>
+          r.level === "warn" &&
+          r.record.event === "api_key_cache_refresh_failed",
+      );
+      assertEquals(warns.length, 1);
+      assertEquals(warns[0].record.phase, "merge_keys");
+      assertEquals(warns[0].record.errorMessage, "kv list outage");
+    } finally {
+      fail.restore();
+      logs.restore();
+      kv.close();
+    }
+  },
+);
