@@ -80,19 +80,19 @@ Deno.test("health: GET /api/diagnostics returns checks with admin token", async 
   const kv = await setupKv();
   const handler = createHandler(createRouter());
 
-  const setupRes = await handler(
-    new Request(`${BASE}/api/auth/setup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Setup-Token": "test-setup-token",
-      },
-      body: JSON.stringify({ password: "testpass" }),
-    }),
-  );
-  const { token } = await setupRes.json();
-
   try {
+    const setupRes = await handler(
+      new Request(`${BASE}/api/auth/setup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Setup-Token": "test-setup-token",
+        },
+        body: JSON.stringify({ password: "testpass" }),
+      }),
+    );
+    assertEquals(setupRes.status, 200);
+    const { token } = await setupRes.json();
     const res = await handler(makeReq("/api/diagnostics", {
       "X-Admin-Token": token,
     }));

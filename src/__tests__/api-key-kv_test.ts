@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { AppState, state } from "../state.ts";
-import { kvAddKey, kvUpdateKey } from "../kv/api-keys.ts";
-import { kvGetApiKeyById } from "../kv/api-keys.ts";
+import { kvAddKey, kvGetApiKeyById, kvUpdateKey } from "../kv/api-keys.ts";
+import { kvMigrateApiKeysToEncrypted } from "../kv/api-keys-migrate.ts";
 import { markKeyInvalid } from "../api-keys.ts";
 import { API_KEY_PREFIX } from "../constants.ts";
 import { setLogSinkForTests } from "../logger.ts";
@@ -84,7 +84,87 @@ Deno.test("kvUpdateKey: returns updated false when key not in memory or KV", asy
   }
 });
 
-Deno.test("markKeyInvalid: dirtyKeyIds retained on commit failure", async () => {
+Deno.test("kvMigrateApiKeysToEncrypted: preserves dirty cached stats while merging migrated keys", async () => {
+  const kv = await setupKv();
+  const addResult = await kvAddKey("sk-dirty-cache-migration-test");
+  const dirtyId = addResult.id!;
+  await kvGetApiKeyById(dirtyId);
+  const dirtyKey = state.cachedKeysById.get(dirtyId);
+  if (!dirtyKey) throw new Error("Expected API key to be cached");
+  dirtyKey.useCount = 7;
+  dirtyKey.lastUsed = 1_234;
+  state.dirtyKeyIds.add(dirtyId);
+
+  const legacyId = "legacy-migration-key";
+  await kv.set([...API_KEY_PREFIX, legacyId], {
+    id: legacyId,
+    key: "sk-legacy-migration-test",
+    useCount: 0,
+    status: "active",
+    createdAt: 1,
+  });
+
+  try {
+    const migrated = await kvMigrateApiKeysToEncrypted();
+    assertEquals(migrated, 1);
+
+    const cached = state.cachedKeysById.get(dirtyId);
+    if (!cached) throw new Error("Expected dirty API key to remain cached");
+    assertEquals(cached.useCount, 7);
+    assertEquals(cached.lastUsed, 1_234);
+    assertEquals(state.dirtyKeyIds.has(dirtyId), true);
+
+    const migratedEntry = await kv.get([...API_KEY_PREFIX, legacyId]);
+    assertEquals((migratedEntry.value as { key?: string }).key, undefined);
+    assertEquals(
+      typeof (migratedEntry.value as { encryptedKey?: string }).encryptedKey,
+      "string",
+    );
+  } finally {
+    setLogSinkForTests(null);
+    kv.close();
+  }
+});
+
+Deno.test("markKeyInvalid: retries atomic conflicts until invalid status is persisted", async () => {
+  const kv = await setupKv();
+  const addResult = await kvAddKey("sk-invalid-retry-test");
+  const id = addResult.id!;
+  await kvGetApiKeyById(id);
+
+  const originalAtomic = kv.atomic.bind(kv);
+  let commitCount = 0;
+  kv.atomic = () => {
+    const op = originalAtomic();
+    const originalCommit = op.commit.bind(op);
+    op.commit = () => {
+      commitCount++;
+      if (commitCount <= 2) {
+        return Promise.resolve(
+          { ok: false } as unknown as Deno.KvCommitResult,
+        );
+      }
+      return originalCommit();
+    };
+    return op;
+  };
+
+  try {
+    await markKeyInvalid(id);
+    assertEquals(commitCount, 3);
+    assertEquals(state.dirtyKeyIds.has(id), false);
+    assertEquals(state.cachedKeysById.get(id)?.status, "invalid");
+    const entry = await kv.get([...API_KEY_PREFIX, id]);
+    const persisted = entry.value as { status: string };
+    assertEquals(persisted.status, "invalid");
+  } finally {
+    kv.atomic = originalAtomic;
+    setLogSinkForTests(null);
+    kv.close();
+  }
+});
+
+Deno.test("markKeyInvalid: dirtyKeyIds retained after retry exhaustion", async () => {
   const kv = await setupKv();
   const addResult = await kvAddKey("sk-dirty-fail-test");
   const id = addResult.id!;
@@ -92,18 +172,24 @@ Deno.test("markKeyInvalid: dirtyKeyIds retained on commit failure", async () => 
   state.dirtyKeyIds.add(id);
 
   const originalAtomic = kv.atomic.bind(kv);
+  let commitCount = 0;
   kv.atomic = () => {
     const op = originalAtomic();
     op.commit = () => {
-      return Promise.resolve(
-        { ok: false } as unknown as Deno.KvCommitResult,
-      );
+      commitCount++;
+      if (commitCount < 10) {
+        return Promise.resolve(
+          { ok: false } as unknown as Deno.KvCommitResult,
+        );
+      }
+      throw new Error("forced atomic failure after retry exhaustion");
     };
     return op;
   };
 
   try {
     await markKeyInvalid(id);
+    assertEquals(commitCount, 10);
     assertEquals(state.dirtyKeyIds.has(id), true);
     assertEquals(state.cachedKeysById.get(id)?.status, "invalid");
   } finally {

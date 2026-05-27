@@ -1,9 +1,8 @@
 import type { ApiKey } from "../types.ts";
 import { API_KEY_PREFIX } from "../constants.ts";
-import { rebuildActiveKeyIds } from "../api-keys.ts";
 import { encryptApiKey } from "../secrets.ts";
 import { state } from "../state.ts";
-import { kvGetAllKeys } from "./api-keys.ts";
+import { kvMergeAllApiKeysIntoCache } from "./api-keys.ts";
 
 type LegacyApiKey = Omit<ApiKey, "encryptedKey"> & { key: string };
 
@@ -43,10 +42,7 @@ export async function kvMigrateApiKeysToEncrypted(): Promise<number> {
     migrated++;
   }
   if (migrated > 0) {
-    state.cachedKeysById = new Map(
-      (await kvGetAllKeys()).map((key) => [key.id, key]),
-    );
-    rebuildActiveKeyIds();
+    await kvMergeAllApiKeysIntoCache();
   }
   return migrated;
 }
