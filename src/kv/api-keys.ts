@@ -211,22 +211,30 @@ export async function kvDeleteKey(
     await decryptApiKey(result.value.encryptedKey);
   const valueDigest = await sha256Hex(plaintext);
   const indexKey = valueIndexKey(valueDigest);
-  const indexEntry = await state.kv.get<string>(indexKey);
-
-  const revisionEntry = await state.kv.get<number>(API_KEY_CACHE_REVISION_KEY);
+  // Fetch indexEntry and revisionEntry in parallel — mirrors the
+  // Promise.all pattern in kvAddKey and saves one KV round-trip.
+  const [indexEntry, revisionEntry] = await Promise.all([
+    state.kv.get<string>(indexKey),
+    state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
+  ]);
   const revision = getNextRevisionValue(revisionEntry);
+  // Always CAS the index entry — including the "no entry yet" case for a
+  // legacy record. Without this, a concurrent backfill that creates the
+  // index between our read and our commit would leave a dangling index
+  // pointing at the just-deleted id, permanently locking that plaintext
+  // value out of future kvAddKey calls.
   let atomic = state.kv.atomic()
     .check(result)
+    .check(indexEntry)
     .check(revisionEntry)
     .delete(key)
     .set(API_KEY_CACHE_REVISION_KEY, revision);
   if (indexEntry.value === id) {
     // Only delete the index entry when it actually points at this id —
-    // a legacy record may pre-date the index (no entry to delete) and a
-    // pre-existing duplicate could share the same digest with a different
-    // surviving id, in which case the index must keep pointing at the
-    // survivor.
-    atomic = atomic.check(indexEntry).delete(indexKey);
+    // a pre-existing duplicate could share the same digest with a
+    // different surviving id, in which case the index must keep pointing
+    // at the survivor.
+    atomic = atomic.delete(indexKey);
   }
   const deleteResult = await atomic.commit();
   if (!deleteResult.ok) {

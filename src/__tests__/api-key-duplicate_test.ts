@@ -85,14 +85,17 @@ Deno.test(
       assertEquals(second.success, false);
       assertEquals(second.error, "密钥已存在");
 
-      // KV must still hold exactly one record for this value.
-      const matching: string[] = [];
+      // KV must still hold exactly one record under the api-key prefix.
+      // Filtering by first.id would silently miss a duplicate written
+      // under a different id — which is exactly the regression #139
+      // guards against. Count every record instead.
+      let total = 0;
       const iter = state.kv.list({ prefix: API_KEY_PREFIX });
       for await (const entry of iter) {
-        const persisted = entry.value as { id: string; encryptedKey: string };
-        if (persisted.id === first.id) matching.push(persisted.id);
+        void entry;
+        total += 1;
       }
-      assertEquals(matching.length, 1);
+      assertEquals(total, 1);
     } finally {
       setLogSinkForTests(null);
       kv.close();
@@ -291,6 +294,87 @@ Deno.test(
         digest,
       ]);
       assertEquals(indexEntry.value, "bootstrap-legacy");
+    } finally {
+      setLogSinkForTests(null);
+      kv.close();
+    }
+  },
+);
+
+Deno.test(
+  "assertCurrentApiKey: defensive type guard rejects non-object values",
+  async () => {
+    // assertCurrentApiKey runs against arbitrary KV payloads — pre-#145
+    // a null / non-object value tripped a TypeError instead of the
+    // expected "格式不兼容" error. Lock the defensive shape down.
+    const { assertCurrentApiKey } = await import("../api-key-record.ts");
+    for (const value of [null, undefined, 42, "string", true]) {
+      try {
+        assertCurrentApiKey(value);
+        throw new Error(
+          `assertCurrentApiKey accepted ${JSON.stringify(value)}`,
+        );
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        assertEquals(
+          error.message.startsWith("API key 存储格式不兼容"),
+          true,
+          `unexpected error for ${JSON.stringify(value)}: ${error.message}`,
+        );
+      }
+    }
+  },
+);
+
+Deno.test(
+  "kvDeleteKey: blocks dangling index from concurrent backfill (CAS)",
+  async () => {
+    // Race scenario: kvDeleteKey reads a null indexEntry for a legacy
+    // record, then a concurrent backfill writes the index for that
+    // record's digest before kvDeleteKey commits. Pre-fix the delete
+    // proceeded anyway and left a dangling index pointing at the just-
+    // deleted id, permanently locking that plaintext out of future
+    // kvAddKey. Post-fix the delete CASes the indexEntry slot itself
+    // and must fail (returns 密钥删除失败) so the caller can retry.
+    const kv = await setupKv();
+    try {
+      const id = "race-legacy";
+      await persistLegacyApiKey(id, "sk-race");
+      const digest = await sha256Hex("sk-race");
+      const indexKey = [...API_KEY_VALUE_INDEX_PREFIX, digest];
+
+      // Inject the race: monkey-patch state.kv.atomic so that just before
+      // kvDeleteKey commits, we slip an index write into KV. The atomic
+      // commit's CAS on the (formerly null) indexEntry must now fail.
+      const originalAtomic = state.kv.atomic.bind(state.kv);
+      let raced = false;
+      state.kv.atomic = (() => {
+        const tx = originalAtomic();
+        const originalCommit = tx.commit.bind(tx);
+        tx.commit = async () => {
+          if (!raced) {
+            raced = true;
+            await state.kv.set(indexKey, id);
+          }
+          return originalCommit();
+        };
+        return tx;
+      }) as typeof state.kv.atomic;
+
+      try {
+        const result = await kvDeleteKey(id);
+        assertEquals(result.success, false);
+        assertEquals(result.error, "密钥删除失败，请重试");
+      } finally {
+        state.kv.atomic = originalAtomic;
+      }
+
+      // Main record AND index must still both exist — nothing got
+      // deleted because the CAS conflict aborted the atomic.
+      const stored = await state.kv.get([...API_KEY_PREFIX, id]);
+      assertEquals(stored.value !== null, true);
+      const indexEntry = await state.kv.get<string>(indexKey);
+      assertEquals(indexEntry.value, id);
     } finally {
       setLogSinkForTests(null);
       kv.close();

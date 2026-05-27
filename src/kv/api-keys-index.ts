@@ -60,14 +60,17 @@ export async function kvBackfillApiKeyValueIndex(): Promise<{
       continue;
     }
     const result = await state.kv.atomic()
+      .check(entry)
       .check(indexEntry)
       .set(indexKey, persisted.id)
       .commit();
     if (result.ok) created++;
-    // CAS lost: another instance set the index for this digest first.
-    // Either it points at our id (idempotent) or at a duplicate (which
-    // the next iteration / next bootstrap will surface). Either way the
-    // current run does not need to retry.
+    // CAS lost: either another instance set the index for this digest
+    // first (idempotent if it points at our id; surfaced next iteration
+    // if at a duplicate), or the main record was concurrently modified
+    // / deleted (in which case writing the index would have produced a
+    // dangling pointer). The current run does not need to retry —
+    // `entry` is now stale anyway.
   }
   return { created, preExistingDuplicates };
 }

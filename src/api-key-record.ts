@@ -14,6 +14,9 @@ export function toPersistedApiKey(key: ApiKey): PersistedApiKey {
  * in sibling files can reuse it without an import cycle.
  */
 export function assertCurrentApiKey(value: unknown): PersistedApiKey {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("API key 存储格式不兼容：记录不是对象");
+  }
   const raw = value as Record<string, unknown>;
   if (typeof raw.encryptedKey !== "string") {
     throw new Error("API key 存储格式不兼容：需要先运行密钥迁移");
