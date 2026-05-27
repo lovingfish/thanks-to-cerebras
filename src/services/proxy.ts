@@ -125,6 +125,24 @@ async function discardBoundedUpstreamErrorBody(
   await readBoundedBodyText(response.body);
 }
 
+/**
+ * Classifies an upstream response for the circuit breaker:
+ * - 5xx: counts as a failure and bumps the breaker.
+ * - 2xx: counts as a success and closes the breaker.
+ * - 4xx: ignored — it's a client/upstream-classification error, not an
+ *   outage. Treating 4xx as success would let intermittent 429s reset the
+ *   failure counter and prevent the breaker from ever opening under mixed
+ *   5xx + 429 traffic. See issue #137.
+ */
+function recordCircuitOutcome(status: number): void {
+  if (status >= 500) {
+    recordUpstreamFailure();
+    metrics.inc("upstream_responses_total", "5xx");
+  } else if (status >= 200 && status < 300) {
+    recordUpstreamSuccess();
+  }
+}
+
 export async function forwardChatCompletion(
   requestBody: Record<string, unknown>,
   context: ProxyLogContext = {},
@@ -210,17 +228,7 @@ export async function forwardChatCompletion(
       return { kind: "error", message: "上游请求失败", status: 502 };
     }
 
-    if (apiResponse.status >= 500) {
-      recordUpstreamFailure();
-      metrics.inc("upstream_responses_total", "5xx");
-    } else if (apiResponse.ok) {
-      recordUpstreamSuccess();
-    }
-    // 4xx responses (401/403/404/429/etc) are ignored by the circuit
-    // breaker: they aren't real upstream outages, and resetting the
-    // failure counter on every 4xx would let intermittent client errors
-    // (especially 429) mask underlying 5xx and keep the breaker from
-    // ever opening under realistic mixed traffic. See issue #137.
+    recordCircuitOutcome(apiResponse.status);
 
     if (apiResponse.status === 404) {
       const bodyRead = await readBoundedBodyText(apiResponse.body);
