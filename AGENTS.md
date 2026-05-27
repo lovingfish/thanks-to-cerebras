@@ -6,6 +6,22 @@ These instructions apply to the whole repository. This project is a
 Deno/TypeScript Cerebras API proxy with a same-origin admin UI and Deno KV
 persistence.
 
+## GitHub Remotes
+
+- Treat `makoMakoGo/thanks-to-cerebras` as the upstream repository.
+- Treat `lovingfish/thanks-to-cerebras` as a fork used by the Deno Deploy app.
+- When pushing changes to upstream `main`, also sync the fork's `main` branch to
+  the same commit, for example:
+
+```sh
+git push origin main
+git push git@github.com-lovingfish:lovingfish/thanks-to-cerebras.git \
+  refs/heads/main:refs/heads/main
+```
+
+- Use the `github.com-lovingfish` SSH alias for fork pushes. Do not rely on
+  `gh repo sync` unless the active `lovingfish` token has the required scopes.
+
 ## Architecture
 
 - Keep `main.ts` as the entrypoint: compose startup, KV bootstrap, and the app
