@@ -10,17 +10,8 @@ persistence.
 
 - Treat `makoMakoGo/thanks-to-cerebras` as the upstream repository.
 - Treat `lovingfish/thanks-to-cerebras` as a fork used by the Deno Deploy app.
-- When pushing changes to upstream `main`, also sync the fork's `main` branch to
-  the same commit, for example:
-
-```sh
-git push origin main
-git push git@github.com-lovingfish:lovingfish/thanks-to-cerebras.git \
-  refs/heads/main:refs/heads/main
-```
-
-- Use the `github.com-lovingfish` SSH alias for fork pushes. Do not rely on
-  `gh repo sync` unless the active `lovingfish` token has the required scopes.
+- Fork sync is automated by `.github/workflows/sync-lovingfish-fork.yml` on
+  every push to `main`. Do not push to the fork manually.
 - Do not use `Closes #N` or `Fixes #N` in commit messages. The fork sync causes
   GitHub to duplicate issue-close activity. Instead, close issues manually or
   via the PR UI.
