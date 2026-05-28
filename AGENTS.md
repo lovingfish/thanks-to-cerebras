@@ -21,6 +21,9 @@ git push git@github.com-lovingfish:lovingfish/thanks-to-cerebras.git \
 
 - Use the `github.com-lovingfish` SSH alias for fork pushes. Do not rely on
   `gh repo sync` unless the active `lovingfish` token has the required scopes.
+- Do not use `Closes #N` or `Fixes #N` in commit messages. The fork sync causes
+  GitHub to duplicate issue-close activity. Instead, close issues manually or
+  via the PR UI.
 
 ## Architecture
 
