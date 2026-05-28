@@ -1,11 +1,7 @@
 import { adminJsonResponse, adminProblemResponse } from "../http.ts";
 import { maskKey, parseBatchInput } from "../utils.ts";
-import {
-  kvAddKey,
-  kvDeleteKey,
-  kvGetAllKeys,
-  kvMigrateApiKeysToEncrypted,
-} from "../kv/api-keys.ts";
+import { kvAddKey, kvDeleteKey, kvGetAllKeys } from "../kv/api-keys.ts";
+import { kvMigrateApiKeysToEncrypted } from "../kv/api-keys-migrate.ts";
 import { testKey } from "../services/api-keys.ts";
 import { logger } from "../logger.ts";
 import type { Router } from "../router.ts";

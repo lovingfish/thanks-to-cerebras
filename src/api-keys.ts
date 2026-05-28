@@ -1,6 +1,7 @@
 import {
   API_KEY_CACHE_REVISION_KEY,
   API_KEY_PREFIX,
+  KV_ATOMIC_MAX_RETRIES,
   PROXY_KEY_AUTH_REFRESH_INTERVAL_MS,
 } from "./constants.ts";
 import { toPersistedApiKey } from "./api-key-record.ts";
@@ -11,6 +12,7 @@ import {
   recordApiKeyCacheRevision,
 } from "./kv/revisions.ts";
 import { kvMergeAllApiKeysIntoCache } from "./kv/api-keys.ts";
+import { waitForKvAtomicRetry } from "./kv/atomic-retry.ts";
 import { logger } from "./logger.ts";
 
 export function rebuildActiveKeyIds(): void {
@@ -127,26 +129,37 @@ export async function markKeyInvalid(id: string): Promise<void> {
   if (keyEntry.status === "invalid") return;
   keyEntry.status = "invalid";
   state.keyCooldownUntil.delete(id);
-  state.dirtyKeyIds.delete(id);
   rebuildActiveKeyIds();
   try {
     const key = [...API_KEY_PREFIX, id];
-    const [entry, revisionEntry] = await Promise.all([
-      state.kv.get(key),
-      state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
-    ]);
-    if (!entry.value) return;
-    const revision = getNextRevisionValue(revisionEntry);
-    const result = await state.kv.atomic()
-      .check(entry)
-      .check(revisionEntry)
-      .set(key, toPersistedApiKey(keyEntry))
-      .set(API_KEY_CACHE_REVISION_KEY, revision)
-      .commit();
-    if (!result.ok) throw new Error("API key invalidation write conflict");
-    recordApiKeyCacheRevision(revision);
+    for (let attempt = 0; attempt < KV_ATOMIC_MAX_RETRIES; attempt++) {
+      const [entry, revisionEntry] = await Promise.all([
+        state.kv.get(key),
+        state.kv.get<number>(API_KEY_CACHE_REVISION_KEY),
+      ]);
+      if (!entry.value) {
+        state.cachedKeysById.delete(id);
+        state.keyCooldownUntil.delete(id);
+        state.dirtyKeyIds.delete(id);
+        rebuildActiveKeyIds();
+        return;
+      }
+      const revision = getNextRevisionValue(revisionEntry);
+      const result = await state.kv.atomic()
+        .check(entry)
+        .check(revisionEntry)
+        .set(key, toPersistedApiKey(keyEntry))
+        .set(API_KEY_CACHE_REVISION_KEY, revision)
+        .commit();
+      if (result.ok) {
+        state.dirtyKeyIds.delete(id);
+        recordApiKeyCacheRevision(revision);
+        return;
+      }
+      await waitForKvAtomicRetry(attempt);
+    }
+    throw new Error("API key invalidation write conflict");
   } catch (error) {
-    state.dirtyKeyIds.add(id);
     logger.error("api_key_invalidation_write_failed", { keyId: id }, error);
   }
 }

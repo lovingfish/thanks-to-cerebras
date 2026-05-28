@@ -24,11 +24,11 @@ async function setupKv(): Promise<Deno.Kv> {
   return kv;
 }
 
-function makeReq(path: string): Request {
-  return new Request(`${BASE}${path}`);
+function makeReq(path: string, headers?: HeadersInit): Request {
+  return new Request(`${BASE}${path}`, { headers });
 }
 
-Deno.test("health: GET /readyz returns ready when KV and secrets are configured", async () => {
+Deno.test("health: GET /readyz returns 200 with only ready field when healthy", async () => {
   const kv = await setupKv();
   const handler = createHandler(createRouter());
 
@@ -37,16 +37,14 @@ Deno.test("health: GET /readyz returns ready when KV and secrets are configured"
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.ready, true);
-    assertEquals(body.checks.keyEncryptionSecret, true);
-    assertEquals(body.checks.kv, true);
-    assertEquals(body.checks.config, true);
+    assertEquals(body.checks, undefined);
   } finally {
     setLogSinkForTests(null);
     kv.close();
   }
 });
 
-Deno.test("health: GET /readyz returns 503 when KV is unavailable", async () => {
+Deno.test("health: GET /readyz returns 503 with only ready field when KV unavailable", async () => {
   const kv = await setupKv();
   const handler = createHandler(createRouter());
   const originalKv = state.kv;
@@ -57,10 +55,54 @@ Deno.test("health: GET /readyz returns 503 when KV is unavailable", async () => 
     assertEquals(res.status, 503);
     const body = await res.json();
     assertEquals(body.ready, false);
-    assertEquals(body.checks.kv, false);
-    assertEquals(body.checks.config, false);
+    assertEquals(body.checks, undefined);
   } finally {
     state.kv = originalKv;
+    setLogSinkForTests(null);
+    kv.close();
+  }
+});
+
+Deno.test("health: GET /api/diagnostics returns 401 without admin token", async () => {
+  const kv = await setupKv();
+  const handler = createHandler(createRouter());
+
+  try {
+    const res = await handler(makeReq("/api/diagnostics"));
+    assertEquals(res.status, 401);
+  } finally {
+    setLogSinkForTests(null);
+    kv.close();
+  }
+});
+
+Deno.test("health: GET /api/diagnostics returns checks with admin token", async () => {
+  const kv = await setupKv();
+  const handler = createHandler(createRouter());
+
+  try {
+    const setupRes = await handler(
+      new Request(`${BASE}/api/auth/setup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Setup-Token": "test-setup-token",
+        },
+        body: JSON.stringify({ password: "testpass" }),
+      }),
+    );
+    assertEquals(setupRes.status, 200);
+    const { token } = await setupRes.json();
+    const res = await handler(makeReq("/api/diagnostics", {
+      "X-Admin-Token": token,
+    }));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.ready, true);
+    assertEquals(body.checks.keyEncryptionSecret, true);
+    assertEquals(body.checks.kv, true);
+    assertEquals(body.checks.config, true);
+  } finally {
     setLogSinkForTests(null);
     kv.close();
   }

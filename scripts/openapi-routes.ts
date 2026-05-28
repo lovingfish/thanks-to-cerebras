@@ -36,4 +36,5 @@ export const EXPECTED_ROUTES: Route[] = [
   { method: "get", path: "/api/config" },
   { method: "patch", path: "/api/config" },
   { method: "get", path: "/api/metrics" },
+  { method: "get", path: "/api/diagnostics" },
 ];

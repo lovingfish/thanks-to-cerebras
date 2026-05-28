@@ -1,10 +1,27 @@
 import { CEREBRAS_API_URL, UPSTREAM_TEST_TIMEOUT_MS } from "../constants.ts";
 import { fetchWithTimeout, isAbortError, safeJsonParse } from "../utils.ts";
 import { state } from "../state.ts";
+import type { ApiKey } from "../types.ts";
 import { kvGetApiKeyById, kvUpdateKey } from "../kv/api-keys.ts";
 import { removeModelFromPool } from "../kv/model-catalog.ts";
 import { isModelNotFoundPayload, isModelNotFoundText } from "../models.ts";
 import { logger } from "../logger.ts";
+
+async function updateTestKeyStatus(
+  id: string,
+  status: ApiKey["status"],
+): Promise<{ success: boolean; status: string; error?: string } | null> {
+  try {
+    const { updated } = await kvUpdateKey(id, { status });
+    if (!updated) {
+      return { success: false, status: "invalid", error: "密钥不存在" };
+    }
+    return null;
+  } catch (error) {
+    logger.error("api_key_status_update_failed", { keyId: id }, error);
+    return { success: false, status: "error", error: "密钥状态更新失败" };
+  }
+}
 
 /**
  * Tests an API key against the configured model pool; an empty pool is a config error.
@@ -43,13 +60,15 @@ export async function testKey(
 
     if (response.ok) {
       await response.body?.cancel();
-      await kvUpdateKey(id, { status: "active" });
+      const fail = await updateTestKeyStatus(id, "active");
+      if (fail) return fail;
       return { success: true, status: "active" };
     }
 
     if (response.status === 401 || response.status === 403) {
       await response.body?.cancel();
-      await kvUpdateKey(id, { status: "invalid" });
+      const fail = await updateTestKeyStatus(id, "invalid");
+      if (fail) return fail;
       return {
         success: false,
         status: "invalid",
@@ -66,13 +85,15 @@ export async function testKey(
       if (modelNotFound) {
         await response.body?.cancel();
         await removeModelFromPool(testModel, "model_not_found");
-        await kvUpdateKey(id, { status: "active" });
+        const fail = await updateTestKeyStatus(id, "active");
+        if (fail) return fail;
         return { success: true, status: "active" };
       }
     }
 
     await response.body?.cancel();
-    await kvUpdateKey(id, { status: "inactive" });
+    const fail = await updateTestKeyStatus(id, "inactive");
+    if (fail) return fail;
     return {
       success: false,
       status: "inactive",
@@ -80,7 +101,8 @@ export async function testKey(
     };
   } catch (error) {
     logger.error("api_key_test_failed", { keyId: id }, error);
-    await kvUpdateKey(id, { status: "inactive" });
+    const fail = await updateTestKeyStatus(id, "inactive");
+    if (fail) return fail;
     return {
       success: false,
       status: "inactive",
