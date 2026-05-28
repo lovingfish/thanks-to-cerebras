@@ -47,7 +47,7 @@
   <img src="image/UI.png" alt="UI" width="70%">
 </div>
 
-本项目基于此专为沉浸式翻译设计，实现 Cerebras API 代理转发，支持：
+本项目专为沉浸式翻译设计，实现 Cerebras API 代理转发，支持：
 
 - OpenAI 兼容入口
   - 代理对外暴露 `/v1/chat/completions` 和 `/v1/models`
