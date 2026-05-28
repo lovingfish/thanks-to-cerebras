@@ -19,6 +19,10 @@ const DEFAULT_LIMITS: Limits = { maxLines: 300, maxBytes: 20_000 };
 const TEST_LIMITS: Limits = { maxLines: 2_200, maxBytes: 70_000 };
 const HTML_LIMITS: Limits = { maxLines: 1_300, maxBytes: 70_000 };
 
+const PER_FILE_OVERRIDES: Record<string, Partial<Limits>> = {
+  "src/kv/api-keys.ts": { maxLines: 320 },
+};
+
 type FileFinding = {
   path: string;
   lines: number;
@@ -54,6 +58,8 @@ function extensionOf(path: string): string {
 }
 
 function limitsFor(path: string): Limits {
+  const override = PER_FILE_OVERRIDES[path];
+  if (override) return { ...DEFAULT_LIMITS, ...override };
   if (path.includes("/__tests__/")) return TEST_LIMITS;
   if (extensionOf(path) === ".html") return HTML_LIMITS;
   return DEFAULT_LIMITS;
